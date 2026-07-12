@@ -1,0 +1,7 @@
+# Local runtime state (created by the setup scripts on each machine)
+raylab/
+prometheus-data/
+
+# Editor / OS cruft
+.DS_Store
+*.swp
