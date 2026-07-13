@@ -10,7 +10,8 @@ Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
 ```
 scripts/setup_head.sh     Ray head + Prometheus + cron
 scripts/setup_worker.sh   Ray worker + node_exporter (+ optional Docker/Grafana)
-scripts/common.sh         shared helpers sourced by both
+scripts/setup_mac.sh      join a macOS worker (uv + launchd; no systemd)
+scripts/common.sh         shared helpers sourced by all
 scripts/healthcheck.sh    verify a node's services are up
 scripts/rename.sh         rename a machine (hostname + Tailscale) and restart Ray
 ```
@@ -49,18 +50,12 @@ HEAD_IP=192.168.1.50 RESOURCES='{"small_task": 1}' bash scripts/setup_worker.sh
 Optional flags, both off by default: INSTALL_DOCKER=1 on workers that run
 containerized tasks; INSTALL_GRAFANA=1 on one box only.
 
-The MacBook has no systemd, so it isn't scripted. Install the Tailscale app
-(same account), then join by hand. Use the SAME pinned Python as the cluster
-(PYTHON_VERSION in common.sh, currently 3.12.13) or Ray will reject it:
+The MacBook has no systemd/apt, so it uses its own script (uv for the pinned
+Python, launchd to stay running). Install the Tailscale app (same account) and
+sign in, then:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.12.13
-uv venv --python 3.12.13 ~/raylab/venv
-uv pip install --python ~/raylab/venv/bin/python "ray[default]==2.48.0"
-# macOS has no systemd; run this in tmux so it survives the shell closing:
-~/raylab/venv/bin/ray start --address=head01:6379 --resources='{"mac": 1}'
+HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_mac.sh
 ```
 
 ## Deploy to the headless head node
