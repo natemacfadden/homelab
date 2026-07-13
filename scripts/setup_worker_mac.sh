@@ -74,6 +74,11 @@ cat > "$PLIST" <<EOF
   <dict>
     <!-- Ray blocks multi-node clusters on macOS unless you opt in here. -->
     <key>RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER</key><string>1</string>
+    <!-- Graceful, retryable task kills once whole-machine memory usage crosses
+         80% (matches the Linux workers). This Mac is interactive, so the kill
+         line is measured against total usage, which already includes the ~15GB
+         macOS/app baseline - Ray only starts shedding its own tasks near 25.6GB. -->
+    <key>RAY_memory_usage_threshold</key><string>0.80</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
