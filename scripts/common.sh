@@ -12,7 +12,8 @@ LAB_DIR="$HOME/raylab"
 # Ray requires the SAME Python minor version on every node. We pin it here and let
 # uv fetch that exact Python (see below), so the cluster's Python is independent of
 # each box's OS Python and its updates. Override with PYTHON_VERSION=3.x.
-PYTHON_VERSION="${PYTHON_VERSION:-3.12}"   # 3.13 breaks Ray 2.48.0's dashboard (pathlib.posixpath)
+PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"   # full patch pin: Ray checks the EXACT
+# Python version, so all nodes must match to the patch. (3.13 also breaks Ray 2.48's dashboard.)
 
 # Refuse to run as root, confirm sudo works, and detect the CPU architecture
 # (sets $ARCH to the Debian/Prometheus name: amd64 or arm64).
@@ -47,9 +48,11 @@ setup_venv() {
   uv python install "$PYTHON_VERSION"
   local have=""
   if [[ -x "$LAB_DIR/venv/bin/python" ]]; then
-    have=$("$LAB_DIR/venv/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)
+    have=$("$LAB_DIR/venv/bin/python" -c 'import platform; print(platform.python_version())' 2>/dev/null || true)
   fi
-  if [[ "$have" != "$PYTHON_VERSION" ]]; then
+  # Rebuild unless the venv's full version equals the pin (or starts with it, for a
+  # minor-only pin like "3.12"). Ray compares the exact version, hence the patch pin.
+  if [[ "$have" != "$PYTHON_VERSION" && "$have" != "$PYTHON_VERSION".* ]]; then
     if [[ -n "$have" ]]; then echo "Rebuilding venv (Python $have -> $PYTHON_VERSION)"; fi
     rm -rf "$LAB_DIR/venv"
     uv venv --python "$PYTHON_VERSION" "$LAB_DIR/venv"
@@ -70,7 +73,13 @@ write_service() {
   sudo tee "/etc/systemd/system/${name}.service" >/dev/null
   sudo systemctl daemon-reload
   sudo systemctl enable "$name"
-  sudo systemctl restart "$name"
+  # On failure, surface the service's own logs instead of the opaque systemd message
+  # (this is where Ray prints version mismatches, bad JSON, connection errors, etc.).
+  if ! sudo systemctl restart "$name"; then
+    echo "--- $name failed to start; recent logs: ---" >&2
+    journalctl -u "$name" -n 20 --no-pager -o cat >&2 || true
+    return 1
+  fi
 }
 
 # Run the health check to confirm the install. Non-fatal: a service still warming
