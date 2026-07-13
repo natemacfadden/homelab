@@ -105,8 +105,21 @@ chmod +x "$LAB_DIR/jobs/nightly_trawl.sh"
   echo "0 2 * * * $LAB_DIR/jobs/nightly_trawl.sh >> $LAB_DIR/jobs/trawl.log 2>&1"
 } | crontab -
 
-IP=$(hostname -I | awk '{print $1}')
+LAN_IP=$(hostname -I | awk '{print $1}')
+TS_IP=$(tailscale ip -4 2>/dev/null | head -n1 || true)
+HEAD_ADDR=${TS_IP:-$LAN_IP}   # prefer the stable Tailscale IP when it's up
 echo
-echo "DONE. HEAD_IP for workers: $IP"
-echo "  Ray dashboard  http://$IP:8265"
-echo "  Prometheus     http://$IP:9090"
+{
+  echo "Head node addresses:"
+  echo "  LAN IP:        $LAN_IP"
+  if [[ -n "$TS_IP" ]]; then
+    echo "  Tailscale IP:  $TS_IP  (stable; preferred as HEAD_IP)"
+  else
+    echo "  Tailscale IP:  not up yet - run 'sudo tailscale up', then re-run this script"
+  fi
+  echo
+  echo "Use as HEAD_IP on workers: $HEAD_ADDR"
+  echo "  Ray dashboard  http://$HEAD_ADDR:8265"
+  echo "  Prometheus     http://$HEAD_ADDR:9090"
+} | tee "$HOME/ip.txt"
+echo "(also saved to $HOME/ip.txt)"

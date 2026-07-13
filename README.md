@@ -11,6 +11,7 @@ Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
 scripts/setup_head.sh     Ray head + Prometheus + cron
 scripts/setup_worker.sh   Ray worker + node_exporter (+ optional Docker/Grafana)
 scripts/common.sh         shared helpers sourced by both
+scripts/healthcheck.sh    verify a node's services are up
 ```
 
 ## Head node
@@ -22,11 +23,9 @@ closed.
 bash scripts/setup_head.sh
 ```
 
-Get its IP for the workers:
-
-```bash
-hostname -I | awk '{print $1}'   # or: tailscale ip -4
-```
+When it finishes it prints the address to use as HEAD_IP on the workers (the
+head's Tailscale IP if Tailscale is up, otherwise its LAN IP) and saves the same
+info to ~/ip.txt.
 
 ## Worker nodes
 
@@ -79,6 +78,17 @@ sudo systemctl restart ray-worker node_exporter   # worker
 ```
 
 Then, once per box: sudo tailscale up.
+
+## Health check
+
+Verify a node's services are up (run it on that node):
+
+```bash
+bash scripts/healthcheck.sh
+```
+
+It checks the systemd services, the dashboard/Prometheus ports, and `ray status`,
+and exits non-zero if anything is down, so you can wire it into cron or CI.
 
 ## URLs
 
