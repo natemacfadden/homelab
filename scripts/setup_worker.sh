@@ -82,5 +82,6 @@ if [[ "${INSTALL_GRAFANA:-0}" == "1" ]]; then
 fi
 
 echo
-echo "DONE. Check: systemctl status ray-worker node_exporter"
-echo "The head dashboard http://$HEAD_IP:8265 should now list this node."
+echo "DONE. The head dashboard http://$HEAD_IP:8265 should now list this node."
+echo
+run_healthcheck

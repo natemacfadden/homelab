@@ -123,3 +123,6 @@ echo
   echo "  Prometheus     http://$HEAD_ADDR:9090"
 } | tee "$HOME/ip.txt"
 echo "(also saved to $HOME/ip.txt)"
+
+echo
+run_healthcheck

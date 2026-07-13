@@ -51,3 +51,12 @@ write_service() {
   sudo systemctl enable "$name"
   sudo systemctl restart "$name"
 }
+
+# Run the health check to confirm the install. Non-fatal: a service still warming
+# up shouldn't fail the installer (or trip the ERR trap), so we swallow non-zero.
+run_healthcheck() {
+  echo "== Health check =="
+  sleep 5   # let freshly (re)started services answer their ports
+  bash "$(dirname "${BASH_SOURCE[0]}")/healthcheck.sh" || \
+    echo "(some checks failed; services may still be starting - re-run: bash scripts/healthcheck.sh)"
+}

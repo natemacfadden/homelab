@@ -7,6 +7,7 @@
 set -uo pipefail   # deliberately NOT -e: run every check, then report.
 LAB_DIR="$HOME/raylab"
 fail=0
+ran=0
 
 check() {
   local name=$1; shift
@@ -20,6 +21,7 @@ check() {
 has_unit() { systemctl cat "$1" >/dev/null 2>&1; }
 
 if has_unit ray-head.service; then
+  ran=1
   echo "# head node"
   check "ray-head active"              systemctl is-active --quiet ray-head
   check "prometheus active"            systemctl is-active --quiet prometheus
@@ -29,11 +31,16 @@ if has_unit ray-head.service; then
 fi
 
 if has_unit ray-worker.service; then
+  ran=1
   echo "# worker node"
   check "ray-worker active"    systemctl is-active --quiet ray-worker
   check "node_exporter active" systemctl is-active --quiet node_exporter
 fi
 
 echo
+if [[ $ran -eq 0 ]]; then
+  echo "No homelab services found on this node (run a setup script first)." >&2
+  exit 1
+fi
 if [[ $fail -eq 0 ]]; then echo "All checks passed."; else echo "Some checks FAILED." >&2; fi
 exit $fail

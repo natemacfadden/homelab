@@ -81,14 +81,16 @@ Then, once per box: sudo tailscale up.
 
 ## Health check
 
-Verify a node's services are up (run it on that node):
+Each setup script runs this automatically at the end to confirm the install. You
+can also run it any time on a node:
 
 ```bash
 bash scripts/healthcheck.sh
 ```
 
-It checks the systemd services, the dashboard/Prometheus ports, and `ray status`,
-and exits non-zero if anything is down, so you can wire it into cron or CI.
+It auto-detects head vs worker, checks the systemd services, the dashboard/
+Prometheus ports, and `ray status`, and exits non-zero if anything is down, so you
+can wire it into cron or CI.
 
 ## URLs
 
