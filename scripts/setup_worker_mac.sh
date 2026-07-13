@@ -27,9 +27,7 @@ RAY_PORT=6379
 LABEL="com.homelab.ray-worker"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
-# Fail fast with an obvious message if the head isn't reachable - almost always
-# means Tailscale isn't connected on this Mac (the App Store app must be signed
-# in and toggled On for the head's name to resolve).
+# Fail fast if the head isn't reachable - usually Tailscale isn't connected here.
 if ! nc -z -G 3 "$HEAD_IP" "$RAY_PORT" 2>/dev/null; then
   cat >&2 <<EOF
 ERROR: can't reach the Ray head at $HEAD_IP:$RAY_PORT.
@@ -48,9 +46,8 @@ setup_venv
 
 echo "== [2/2] launchd worker service =="
 mkdir -p "$HOME/Library/LaunchAgents"
-# --block keeps ray in the foreground so launchd can supervise it; KeepAlive
-# restarts it on crash or reboot. launchd passes an argv array, so the resources
-# JSON needs no shell quoting.
+# --block keeps ray in the foreground for launchd; KeepAlive restarts it. launchd
+# passes an argv array, so the resources JSON needs no shell quoting.
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,8 +56,7 @@ cat > "$PLIST" <<EOF
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <!-- caffeinate -s keeps the Mac awake while the worker runs, but ONLY on AC
-         power (the -s assertion is inactive on battery, so battery isn't drained). -->
+    <!-- caffeinate -s: stay awake while running, but only on AC (not battery). -->
     <string>/usr/bin/caffeinate</string>
     <string>-s</string>
     <string>$LAB_DIR/venv/bin/ray</string>
@@ -72,12 +68,9 @@ cat > "$PLIST" <<EOF
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <!-- Ray blocks multi-node clusters on macOS unless you opt in here. -->
+    <!-- Ray needs this opt-in for a multi-node cluster on macOS. -->
     <key>RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER</key><string>1</string>
-    <!-- Graceful, retryable task kills once whole-machine memory usage crosses
-         80% (matches the Linux workers). This Mac is interactive, so the kill
-         line is measured against total usage, which already includes the ~15GB
-         macOS/app baseline - Ray only starts shedding its own tasks near 25.6GB. -->
+    <!-- Shed tasks at 80% whole-machine memory (matches the Linux workers). -->
     <key>RAY_memory_usage_threshold</key><string>0.80</string>
   </dict>
   <key>RunAtLoad</key><true/>
@@ -88,15 +81,34 @@ cat > "$PLIST" <<EOF
 </plist>
 EOF
 
-# Reload the agent. bootout is a no-op the first time; wait for the old instance
-# to fully unload before bootstrapping, or launchd races and returns
-# "Input/output error" (exit 5) because the service is still loaded.
+# Reload: wait for the old instance to unload before bootstrap, or launchd races
+# and returns "Input/output error" (exit 5).
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 for _ in {1..10}; do
   launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
   sleep 0.3
 done
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
+
+if [[ "${INSTALL_SSH:-1}" == "1" ]]; then
+  echo "== OpenSSH / Remote Login (INSTALL_SSH=1; set INSTALL_SSH=0 to skip) =="
+  # Enable Remote Login; needs Full Disk Access, else flip the toggle by hand.
+  if sudo systemsetup -setremotelogin on 2>/dev/null; then
+    echo ">> Remote Login enabled."
+  else
+    echo ">> Enable by hand: System Settings > General > Sharing > Remote Login." >&2
+  fi
+  # Harden only if a key exists and sshd_config includes the drop-in dir (Ventura+).
+  keys="$HOME/.ssh/authorized_keys"
+  if [[ -s "$keys" ]] && grep -q '^Include /etc/ssh/sshd_config.d/' /etc/ssh/sshd_config 2>/dev/null; then
+    printf 'PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n' \
+      | sudo tee /etc/ssh/sshd_config.d/homelab.conf >/dev/null
+    sudo launchctl kickstart -k system/com.openssh.sshd 2>/dev/null || true
+    echo ">> Hardened to key-only auth."
+  else
+    echo ">> SSH auth left unchanged (add a key to $keys, then re-run to harden)."
+  fi
+fi
 
 echo
 echo "Started. Giving it a few seconds, then the tail of its log:"

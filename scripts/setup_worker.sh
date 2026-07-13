@@ -25,8 +25,7 @@ LAN IP), and optionally set RESOURCES (this box's Ray tag). Examples:
 USAGE
   exit 1
 fi
-# NB: do NOT write "${RESOURCES:-{}}" - bash ends that expansion at the first '}',
-# leaving a stray trailing '}' that corrupts the JSON (e.g. '{"cuda": 1}}').
+# NB: not "${RESOURCES:-{}}" - bash ends that at the first '}', corrupting the JSON.
 RESOURCES="${RESOURCES:-}"
 if [[ -z "$RESOURCES" ]]; then RESOURCES='{}'; fi   # default: generic worker
 RAY_PORT=6379                  # must match the head node's port
@@ -39,10 +38,8 @@ sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip curl git tmux uidmap
 setup_venv
 
-# Validate RESOURCES is JSON (catches e.g. missing quotes: {amd: 1}), then build a
-# systemd-safe form: systemd strips unescaped quotes and splits ExecStart on spaces,
-# so drop spaces and escape the double quotes ({"amd": 1} -> {\"amd\":1}, which
-# systemd turns back into {"amd":1}).
+# Validate JSON, then make it systemd-safe: drop spaces and escape quotes, since
+# systemd strips unescaped quotes and splits ExecStart on spaces.
 "$LAB_DIR/venv/bin/python" -c 'import json,sys; json.loads(sys.argv[1])' "$RESOURCES" 2>/dev/null || {
   echo "RESOURCES is not valid JSON: $RESOURCES" >&2
   echo "Use double-quoted keys, e.g.  RESOURCES='{\"cuda\": 1}'" >&2
@@ -87,6 +84,8 @@ EOF
 
 echo "== [4/4] Tailscale =="
 install_tailscale
+
+if [[ "${INSTALL_SSH:-1}" == "1" ]]; then install_ssh; fi
 
 if [[ "${INSTALL_DOCKER:-0}" == "1" ]]; then
   echo "== Optional: rootless Docker =="

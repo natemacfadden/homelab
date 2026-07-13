@@ -7,16 +7,13 @@
 # Fail loudly: print where we died and what died, instead of exiting silently.
 trap 'rc=$?; echo "ERROR (exit $rc) at ${BASH_SOURCE[0]}:$LINENO: $BASH_COMMAND" >&2' ERR
 
-RAY_VERSION="2.48.0"     # single source of truth; identical on head and workers
+RAY_VERSION="2.48.0"     # identical on head and workers
 LAB_DIR="$HOME/raylab"
-# Ray requires the SAME Python minor version on every node. We pin it here and let
-# uv fetch that exact Python (see below), so the cluster's Python is independent of
-# each box's OS Python and its updates. Override with PYTHON_VERSION=3.x.
-PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"   # full patch pin: Ray checks the EXACT
-# Python version, so all nodes must match to the patch. (3.13 also breaks Ray 2.48's dashboard.)
+# Ray checks the EXACT Python version, so pin to the patch and match on every node.
+# uv fetches this Python, so it's independent of the OS. (3.13 breaks Ray 2.48.)
+PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"
 
-# Refuse to run as root, confirm sudo works, and detect the CPU architecture
-# (sets $ARCH to the Debian/Prometheus name: amd64 or arm64).
+# Refuse root, confirm sudo, set $ARCH (amd64/arm64).
 preflight() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "This script targets Linux (systemd/apt). On macOS use: bash scripts/setup_worker_mac.sh" >&2
@@ -34,18 +31,14 @@ preflight() {
   esac
 }
 
-# Install uv (Astral's Python/package manager) if it's missing. uv downloads
-# standalone CPython builds, so the cluster's Python doesn't depend on the OS one.
-# Installs to ~/.local/bin, which we add to PATH for the rest of this run.
+# Install uv if missing (fetches standalone CPython, independent of the OS Python).
 ensure_uv() {
   command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
   command -v uv >/dev/null 2>&1 || { echo "uv install failed (not on PATH)" >&2; exit 1; }
 }
 
-# Create the Ray venv on the pinned Python and install the pinned Ray version. uv
-# fetches the exact Python, so every node matches regardless of OS. Rebuilds the
-# venv if it's missing or on a different Python minor (e.g. a stray conda one).
+# Build the Ray venv on the pinned Python; rebuild if missing or on a wrong version.
 setup_venv() {
   ensure_uv
   mkdir -p "$LAB_DIR"
@@ -54,8 +47,7 @@ setup_venv() {
   if [[ -x "$LAB_DIR/venv/bin/python" ]]; then
     have=$("$LAB_DIR/venv/bin/python" -c 'import platform; print(platform.python_version())' 2>/dev/null || true)
   fi
-  # Rebuild unless the venv's full version equals the pin (or starts with it, for a
-  # minor-only pin like "3.12"). Ray compares the exact version, hence the patch pin.
+  # Rebuild unless it matches the pin (exact, or as a prefix for a minor-only pin).
   if [[ "$have" != "$PYTHON_VERSION" && "$have" != "$PYTHON_VERSION".* ]]; then
     if [[ -n "$have" ]]; then echo "Rebuilding venv (Python $have -> $PYTHON_VERSION)"; fi
     rm -rf "$LAB_DIR/venv"
@@ -69,16 +61,51 @@ install_tailscale() {
   echo ">> Run 'sudo tailscale up' once, manually, to authenticate."
 }
 
+# install_ssh - install OpenSSH and write an idempotent drop-in. Goes key-only
+# only if authorized_keys already has a key (else keeps passwords, so a headless
+# first run can't lock you out). SSH_TAILSCALE_ONLY=1 binds to the Tailscale IP.
+install_ssh() {
+  echo "== OpenSSH server (INSTALL_SSH=1; set INSTALL_SSH=0 to skip) =="
+  sudo apt-get install -y openssh-server
+  local conf=/etc/ssh/sshd_config.d/homelab.conf
+  local keys="$HOME/.ssh/authorized_keys"
+  local harden=0; [[ -s "$keys" ]] && harden=1
+  {
+    echo "# Managed by homelab scripts/common.sh - edit here and re-run setup."
+    echo "PubkeyAuthentication yes"
+    if [[ $harden -eq 1 ]]; then
+      echo "PasswordAuthentication no"
+      echo "KbdInteractiveAuthentication no"
+    else
+      echo "PasswordAuthentication yes"   # no key yet; keep passwords
+    fi
+    if [[ "${SSH_TAILSCALE_ONLY:-0}" == "1" ]]; then
+      local ts_ip; ts_ip=$(tailscale ip -4 2>/dev/null | head -n1 || true)
+      [[ -n "$ts_ip" ]] && echo "ListenAddress $ts_ip"
+    fi
+  } | sudo tee "$conf" >/dev/null
+
+  # ssh.socket would override ListenAddress, so hand the port to sshd.service.
+  if [[ "${SSH_TAILSCALE_ONLY:-0}" == "1" ]]; then
+    sudo systemctl disable --now ssh.socket 2>/dev/null || true
+  fi
+
+  sudo sshd -t || { echo "sshd config test failed; not restarting." >&2; return 1; }
+  sudo systemctl enable ssh
+  sudo systemctl restart ssh
+  if [[ $harden -eq 0 ]]; then
+    echo ">> Passwords still ON (no key). Key-only: ssh-copy-id $USER@$(hostname), then re-run." >&2
+  fi
+}
+
 # write_service NAME  < unit-file-on-stdin
-# Install a systemd unit, then enable and (re)start it. The restart is what makes
-# re-running a setup script actually apply edits to the unit or its config.
+# Install a systemd unit and (re)start it; the restart is what applies re-run edits.
 write_service() {
   local name=$1
   sudo tee "/etc/systemd/system/${name}.service" >/dev/null
   sudo systemctl daemon-reload
   sudo systemctl enable "$name"
-  # On failure, surface the service's own logs instead of the opaque systemd message
-  # (this is where Ray prints version mismatches, bad JSON, connection errors, etc.).
+  # On failure, surface the service's own logs (where Ray prints the real error).
   if ! sudo systemctl restart "$name"; then
     echo "--- $name failed to start; recent logs: ---" >&2
     journalctl -u "$name" -n 20 --no-pager -o cat >&2 || true
@@ -86,11 +113,11 @@ write_service() {
   fi
 }
 
-# Run the health check to confirm the install. Non-fatal: a service still warming
-# up shouldn't fail the installer (or trip the ERR trap), so we swallow non-zero.
+# Run the health check to confirm the install. Non-fatal: a warming-up service
+# shouldn't fail the installer, so we swallow non-zero.
 run_healthcheck() {
   echo "== Health check =="
-  sleep 5   # let freshly (re)started services answer their ports
+  sleep 5   # let (re)started services answer their ports
   bash "$(dirname "${BASH_SOURCE[0]}")/healthcheck.sh" || \
     echo "(some checks failed; services may still be starting - re-run: bash scripts/healthcheck.sh)"
 }

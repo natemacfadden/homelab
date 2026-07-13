@@ -55,8 +55,7 @@ else
   fi
 
   echo "== Tailscale name =="
-  # `tailscale set` changes one setting without resetting others (unlike
-  # `tailscale up`, which is declarative and reverts unspecified flags).
+  # `tailscale set` changes one flag; `up` would revert unspecified ones.
   if command -v tailscale >/dev/null 2>&1 && tailscale status >/dev/null 2>&1; then
     sudo tailscale set --hostname="$NEW"
     echo "Set Tailscale name to '$NEW'."

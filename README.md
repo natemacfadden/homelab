@@ -1,9 +1,8 @@
 # homelab
 
-Install scripts for a five-node Ray cluster: one head node and four workers,
-with Prometheus, Tailscale, and optional Grafana/Docker on workers. You install
-the OS yourself; the two scripts handle everything after that. Both are
-idempotent, so re-running them is safe.
+Install scripts for a five-node Ray cluster (one head, four workers) with
+Prometheus, Tailscale, and optional Grafana/Docker. You install the OS; the
+scripts do the rest. All are idempotent — re-running is safe.
 
 Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
 
@@ -11,30 +10,34 @@ Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
 scripts/setup_head.sh        Ray head + Prometheus + cron
 scripts/setup_worker.sh      Ray worker + node_exporter (+ optional Docker/Grafana)
 scripts/setup_worker_mac.sh  macOS worker (uv + launchd; no systemd)
-scripts/common.sh            shared helpers sourced by the setup scripts
+scripts/common.sh            shared helpers
 scripts/healthcheck.sh       verify a node's services are up
-scripts/rename.sh            rename a machine (hostname + Tailscale) and restart Ray
+scripts/rename.sh            rename a machine and restart Ray
 ```
 
 ## Head node
 
-Run on the always-on box. It also configures the machine to stay on with the lid
-closed.
+Run on the always-on box (it also configures the box to stay on with the lid
+closed):
 
 ```bash
 bash scripts/setup_head.sh
 ```
 
-When it finishes it prints the address to use as HEAD_IP on the workers (the
-head's Tailscale IP if Tailscale is up, otherwise its LAN IP) and saves the same
-info to ~/ip.txt.
+It prints the address to use as HEAD_IP on the workers (Tailscale IP if up, else
+LAN IP) and saves it to `~/ip.txt`.
+
+### Deploy to a headless head
+
+```bash
+rsync -av --exclude .git ./ user@head-ip:~/homelab/
+ssh user@head-ip 'cd ~/homelab && bash scripts/setup_head.sh'
+```
 
 ## Worker nodes
 
-Run on each other box. Two environment variables are passed on the command line:
-
-- HEAD_IP: the head node's IP or Tailscale name.
-- RESOURCES: the Ray tag this box advertises, so matching tasks land here.
+Set `HEAD_IP` (head's IP/Tailscale name) and `RESOURCES` (the Ray tag this box
+advertises, so matching tasks land here):
 
 ```bash
 # ws1: CUDA GPU; also runs the trawler (Docker) and dashboards (Grafana)
@@ -47,72 +50,73 @@ HEAD_IP=192.168.1.50 RESOURCES='{"big_memory": 1}' bash scripts/setup_worker.sh
 HEAD_IP=192.168.1.50 RESOURCES='{"small_task": 1}' bash scripts/setup_worker.sh
 ```
 
-Optional flags, both off by default: INSTALL_DOCKER=1 on workers that run
-containerized tasks; INSTALL_GRAFANA=1 on one box only.
-
-The MacBook has no systemd/apt, so it uses its own script (uv for the pinned
-Python, launchd to stay running). Ray treats a multi-node macOS worker as
-experimental, so the script opts in via RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1.
-Install the Tailscale app (same account) and sign in, then:
+The MacBook has its own script (uv + launchd; opts into Ray's experimental macOS
+clustering). Install the Tailscale app, sign in, then:
 
 ```bash
 HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
 ```
 
-## Deploy to the headless head node
+### Optional flags
 
-```bash
-rsync -av --exclude .git ./ user@head-ip:~/homelab/
-ssh user@head-ip 'cd ~/homelab && bash scripts/setup_head.sh'
-```
+| Flag | Default | Use |
+| --- | --- | --- |
+| `INSTALL_DOCKER` | 0 (off) | on for workers that run containerized tasks |
+| `INSTALL_GRAFANA` | 0 (off) | on for one box only (serves the dashboards) |
+| `INSTALL_SSH` | 1 (on) | installs + hardens OpenSSH; 0 to skip (see below) |
+| `SSH_TAILSCALE_ONLY` | 0 (off) | bind sshd to the Tailscale IP only |
+
+## SSH
+
+On by default. Installs `openssh-server` and writes a drop-in at
+`/etc/ssh/sshd_config.d/homelab.conf`. It goes key-only **only if**
+`~/.ssh/authorized_keys` already has a key — otherwise passwords stay on so a
+headless first run can't lock you out (add a key, re-run to harden). On the mac
+it enables Remote Login (needs Full Disk Access, else enable it by hand).
 
 ## Config and restarts
 
-- Prometheus scrape targets live in the NODE_TARGETS array at the top of
-  setup_head.sh. Edit it and re-run the script to apply.
-- Pinned versions (Ray, Prometheus, node_exporter) live at the top of each
-  script. Keep the Ray version the same on the head and all workers.
-- Every node must run the same Python minor version (Ray enforces this). The
-  scripts use uv to install a pinned, standalone Python (PYTHON_VERSION, default
-  3.12 - Ray 2.48.0 doesn't support 3.13) that's independent of the OS, so upgrades don't
-  break the cluster. Set PYTHON_VERSION to change it; a re-run rebuilds a venv
-  that's on the wrong Python.
-- Re-running either script applies changes and restarts the affected services.
+- **Scrape targets:** the `NODE_TARGETS` array at the top of `setup_head.sh`.
+  Edit and re-run.
+- **Pinned versions** (Ray, Prometheus, node_exporter) live at the top of each
+  script; keep Ray identical on every node.
+- **Python:** every node needs the same version (Ray enforces it). uv installs a
+  pinned standalone Python (`PYTHON_VERSION`, default 3.12 — Ray 2.48 rejects
+  3.13), independent of the OS. Re-running rebuilds a venv on the wrong Python.
+- Re-running a script applies changes and restarts the affected services.
 
 ```bash
-sudo systemctl restart ray-head prometheus       # head
-sudo systemctl restart ray-worker node_exporter   # worker
+sudo systemctl restart ray-head prometheus         # head
+sudo systemctl restart ray-worker node_exporter    # worker
 ```
 
-Then, once per box: sudo tailscale up.
+Then, once per box: `sudo tailscale up`.
 
 ## Renaming a machine
 
-Run on the box you're renaming; it sets the OS hostname, the Tailscale/MagicDNS
-name, and restarts Ray:
+Run on the box you're renaming — sets the OS hostname, Tailscale/MagicDNS name,
+and restarts Ray:
 
 ```bash
 bash scripts/rename.sh head01
 ```
 
-It only renames that machine. Afterwards, update references to the old name:
-any worker's HEAD_IP, and NODE_TARGETS in setup_head.sh (then re-run it).
+It renames only that box. Afterwards update old-name references elsewhere: any
+worker's `HEAD_IP`, and `NODE_TARGETS` in `setup_head.sh` (then re-run it).
 
 ## Health check
 
-Each setup script runs this automatically at the end to confirm the install. You
-can also run it any time on a node:
+Runs automatically at the end of each setup script; run it any time on a node:
 
 ```bash
 bash scripts/healthcheck.sh
 ```
 
-It auto-detects head vs worker, checks the systemd services, the dashboard/
-Prometheus ports, and `ray status`, and exits non-zero if anything is down, so you
-can wire it into cron or CI.
+Auto-detects head vs worker, checks the services, dashboard/Prometheus ports, and
+`ray status`, and exits non-zero if anything is down (usable from cron or CI).
 
 ## URLs
 
-- Ray dashboard: http://<head-ip>:8265
-- Prometheus: http://<head-ip>:9090
-- Grafana (ws1): http://<ws1-ip>:3000, add Prometheus source http://<head-ip>:9090
+- Ray dashboard: `http://<head-ip>:8265`
+- Prometheus: `http://<head-ip>:9090`
+- Grafana (ws1): `http://<ws1-ip>:3000` — add Prometheus source `http://<head-ip>:9090`

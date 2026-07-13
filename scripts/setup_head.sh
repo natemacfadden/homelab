@@ -13,9 +13,7 @@ source ./common.sh
 PROMETHEUS_VERSION="3.5.0"
 PROM_DIR="/opt/prometheus"
 RAY_PORT=6379
-# Prometheus scrape targets: edit to match your workers (Tailscale names or
-# static IPs that resolve from this box), then re-run. This list is the source
-# of truth; the script regenerates prometheus.yml from it.
+# Prometheus scrape targets (source of truth; regenerates prometheus.yml on re-run).
 NODE_TARGETS=(ws1 ws2 bigbox macbook localhost)
 
 preflight
@@ -76,8 +74,7 @@ WantedBy=multi-user.target
 EOF
 
 echo "== [5/6] Always-on (ignore lid, disable sleep) =="
-# This laptop is an always-on server: closing the lid must not suspend it, or
-# the whole cluster loses its head.
+# Always-on server: a lid-close suspend would take the cluster's head down.
 sudo mkdir -p /etc/systemd/logind.conf.d
 sudo tee /etc/systemd/logind.conf.d/homelab-headless.conf >/dev/null <<'EOF'
 [Login]
@@ -98,12 +95,13 @@ source $LAB_DIR/venv/bin/activate
 # ray job submit --address http://localhost:8265 -- python trawl.py --repo "\$REPO"
 EOF
 chmod +x "$LAB_DIR/jobs/nightly_trawl.sh"
-# Rebuild the crontab, keeping existing lines except our job. The `|| true`
-# guards stop set -e aborting on a fresh box (no crontab yet, grep finds nothing).
+# Rebuild the crontab, keeping other lines. `|| true`: fresh box has no crontab.
 {
   crontab -l 2>/dev/null | grep -v nightly_trawl || true
   echo "0 2 * * * $LAB_DIR/jobs/nightly_trawl.sh >> $LAB_DIR/jobs/trawl.log 2>&1"
 } | crontab -
+
+if [[ "${INSTALL_SSH:-1}" == "1" ]]; then install_ssh; fi
 
 LAN_IP=$(hostname -I | awk '{print $1}')
 TS_IP=$(tailscale ip -4 2>/dev/null | head -n1 || true)
