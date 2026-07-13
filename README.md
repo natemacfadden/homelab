@@ -51,8 +51,9 @@ Optional flags, both off by default: INSTALL_DOCKER=1 on workers that run
 containerized tasks; INSTALL_GRAFANA=1 on one box only.
 
 The MacBook has no systemd/apt, so it uses its own script (uv for the pinned
-Python, launchd to stay running). Install the Tailscale app (same account) and
-sign in, then:
+Python, launchd to stay running). Ray treats a multi-node macOS worker as
+experimental, so the script opts in via RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1.
+Install the Tailscale app (same account) and sign in, then:
 
 ```bash
 HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh

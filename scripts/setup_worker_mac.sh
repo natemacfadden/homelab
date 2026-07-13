@@ -66,6 +66,11 @@ cat > "$PLIST" <<EOF
     <string>--metrics-export-port=8080</string>
     <string>--block</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Ray blocks multi-node clusters on macOS unless you opt in here. -->
+    <key>RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER</key><string>1</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$LAB_DIR/ray-worker.log</string>
