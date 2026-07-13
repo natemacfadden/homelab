@@ -25,7 +25,10 @@ LAN IP), and optionally set RESOURCES (this box's Ray tag). Examples:
 USAGE
   exit 1
 fi
-RESOURCES="${RESOURCES:-{}}"   # default: no special tags (generic worker)
+# NB: do NOT write "${RESOURCES:-{}}" - bash ends that expansion at the first '}',
+# leaving a stray trailing '}' that corrupts the JSON (e.g. '{"cuda": 1}}').
+RESOURCES="${RESOURCES:-}"
+if [[ -z "$RESOURCES" ]]; then RESOURCES='{}'; fi   # default: generic worker
 RAY_PORT=6379                  # must match the head node's port
 NODE_EXPORTER_VERSION="1.9.1"
 
