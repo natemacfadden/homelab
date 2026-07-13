@@ -39,6 +39,18 @@ sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip curl git tmux uidmap
 setup_venv
 
+# Validate RESOURCES is JSON (catches e.g. missing quotes: {amd: 1}), then build a
+# systemd-safe form: systemd strips unescaped quotes and splits ExecStart on spaces,
+# so drop spaces and escape the double quotes ({"amd": 1} -> {\"amd\":1}, which
+# systemd turns back into {"amd":1}).
+"$LAB_DIR/venv/bin/python" -c 'import json,sys; json.loads(sys.argv[1])' "$RESOURCES" 2>/dev/null || {
+  echo "RESOURCES is not valid JSON: $RESOURCES" >&2
+  echo "Use double-quoted keys, e.g.  RESOURCES='{\"cuda\": 1}'" >&2
+  exit 1
+}
+RES_UNIT=${RESOURCES// /}
+RES_UNIT=${RES_UNIT//\"/\\\"}
+
 echo "== [2/4] Ray worker service (layered memory limits) =="
 write_service ray-worker <<EOF
 [Unit]
@@ -48,7 +60,7 @@ Wants=network-online.target
 [Service]
 Type=forking
 User=$USER
-ExecStart=$LAB_DIR/venv/bin/ray start --address=$HEAD_IP:$RAY_PORT --resources='$RESOURCES' --metrics-export-port=8080
+ExecStart=$LAB_DIR/venv/bin/ray start --address=$HEAD_IP:$RAY_PORT --resources=$RES_UNIT --metrics-export-port=8080
 ExecStop=$LAB_DIR/venv/bin/ray stop
 Restart=on-failure
 Environment=RAY_memory_usage_threshold=0.80   # graceful, retryable task kills
