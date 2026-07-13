@@ -12,6 +12,7 @@ scripts/setup_head.sh     Ray head + Prometheus + cron
 scripts/setup_worker.sh   Ray worker + node_exporter (+ optional Docker/Grafana)
 scripts/common.sh         shared helpers sourced by both
 scripts/healthcheck.sh    verify a node's services are up
+scripts/rename.sh         rename a machine (hostname + Tailscale) and restart Ray
 ```
 
 ## Head node
@@ -78,6 +79,18 @@ sudo systemctl restart ray-worker node_exporter   # worker
 ```
 
 Then, once per box: sudo tailscale up.
+
+## Renaming a machine
+
+Run on the box you're renaming; it sets the OS hostname, the Tailscale/MagicDNS
+name, and restarts Ray:
+
+```bash
+bash scripts/rename.sh head01
+```
+
+It only renames that machine. Afterwards, update references to the old name:
+any worker's HEAD_IP, and NODE_TARGETS in setup_head.sh (then re-run it).
 
 ## Health check
 
