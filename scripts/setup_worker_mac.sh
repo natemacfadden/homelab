@@ -27,6 +27,22 @@ RAY_PORT=6379
 LABEL="com.homelab.ray-worker"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
+# Fail fast with an obvious message if the head isn't reachable - almost always
+# means Tailscale isn't connected on this Mac (the App Store app must be signed
+# in and toggled On for the head's name to resolve).
+if ! nc -z -G 3 "$HEAD_IP" "$RAY_PORT" 2>/dev/null; then
+  cat >&2 <<EOF
+ERROR: can't reach the Ray head at $HEAD_IP:$RAY_PORT.
+
+Most likely Tailscale isn't connected on this Mac. Open the Tailscale app, sign
+in (same account as the cluster), toggle it On, then re-run this script.
+
+If you used a name like 'head01' that won't resolve, MagicDNS isn't active yet -
+use the head's 100.x Tailscale IP as HEAD_IP instead (tailscale ip -4 on head01).
+EOF
+  exit 1
+fi
+
 echo "== [1/2] Python venv + Ray (uv, pinned Python) =="
 setup_venv
 
