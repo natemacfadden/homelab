@@ -73,7 +73,7 @@ ssh user@head-ip 'cd ~/homelab && bash scripts/setup_head.sh'
   script. Keep the Ray version the same on the head and all workers.
 - Every node must run the same Python minor version (Ray enforces this). The
   scripts use uv to install a pinned, standalone Python (PYTHON_VERSION, default
-  3.13) that's independent of the OS Python, so apt/brew/distro upgrades don't
+  3.12 - Ray 2.48.0 doesn't support 3.13) that's independent of the OS, so upgrades don't
   break the cluster. Set PYTHON_VERSION to change it; a re-run rebuilds a venv
   that's on the wrong Python.
 - Re-running either script applies changes and restarts the affected services.

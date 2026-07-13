@@ -12,7 +12,7 @@ LAB_DIR="$HOME/raylab"
 # Ray requires the SAME Python minor version on every node. We pin it here and let
 # uv fetch that exact Python (see below), so the cluster's Python is independent of
 # each box's OS Python and its updates. Override with PYTHON_VERSION=3.x.
-PYTHON_VERSION="${PYTHON_VERSION:-3.13}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12}"   # 3.13 breaks Ray 2.48.0's dashboard (pathlib.posixpath)
 
 # Refuse to run as root, confirm sudo works, and detect the CPU architecture
 # (sets $ARCH to the Debian/Prometheus name: amd64 or arm64).
