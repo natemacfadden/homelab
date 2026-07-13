@@ -145,10 +145,12 @@ chmod +x "$LAB_DIR/jobs/nightly_trawl.sh"
 ( crontab -l 2>/dev/null | grep -v nightly_trawl ; \
   echo "0 2 * * * $LAB_DIR/jobs/nightly_trawl.sh >> $LAB_DIR/jobs/trawl.log 2>&1" ) | crontab -
 
+IP=$(hostname -I | awk '{print $1}')
 echo
-echo "DONE. Checks:"
+echo "DONE. This node's IP (use as HEAD_IP on workers): $IP"
+echo
+echo "Checks:"
 echo "  systemctl status ray-head prometheus   # both active?"
-echo "  hostname -I                            # this node's IP (use as HEAD_IP)"
-echo "  http://<this-ip>:8265                  # Ray dashboard, from any browser"
-echo "  http://<this-ip>:9090                  # Prometheus UI"
+echo "  http://$IP:8265                        # Ray dashboard, from any browser"
+echo "  http://$IP:9090                        # Prometheus UI"
 echo "  crontab -l                             # nightly job registered"
