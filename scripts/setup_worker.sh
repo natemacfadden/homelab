@@ -14,7 +14,17 @@ set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./common.sh
 
-: "${HEAD_IP:?Set HEAD_IP=<head node address>}"
+if [[ -z "${HEAD_IP:-}" ]]; then
+  cat >&2 <<'USAGE'
+HEAD_IP is not set. Point this worker at the head node's Tailscale name/IP (or
+LAN IP), and optionally set RESOURCES (this box's Ray tag). Examples:
+
+  HEAD_IP=head01 RESOURCES='{"cuda": 1}'       bash scripts/setup_worker.sh
+  HEAD_IP=head01 RESOURCES='{"small_task": 1}' bash scripts/setup_worker.sh
+  HEAD_IP=100.x.y.z                            bash scripts/setup_worker.sh   # RESOURCES defaults to {}
+USAGE
+  exit 1
+fi
 RESOURCES="${RESOURCES:-{}}"   # default: no special tags (generic worker)
 RAY_PORT=6379                  # must match the head node's port
 NODE_EXPORTER_VERSION="1.9.1"
