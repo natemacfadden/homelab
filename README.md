@@ -8,12 +8,12 @@ idempotent, so re-running them is safe.
 Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
 
 ```
-scripts/setup_head.sh     Ray head + Prometheus + cron
-scripts/setup_worker.sh   Ray worker + node_exporter (+ optional Docker/Grafana)
-scripts/setup_mac.sh      join a macOS worker (uv + launchd; no systemd)
-scripts/common.sh         shared helpers sourced by all
-scripts/healthcheck.sh    verify a node's services are up
-scripts/rename.sh         rename a machine (hostname + Tailscale) and restart Ray
+scripts/setup_head.sh        Ray head + Prometheus + cron
+scripts/setup_worker.sh      Ray worker + node_exporter (+ optional Docker/Grafana)
+scripts/setup_worker_mac.sh  macOS worker (uv + launchd; no systemd)
+scripts/common.sh            shared helpers sourced by the setup scripts
+scripts/healthcheck.sh       verify a node's services are up
+scripts/rename.sh            rename a machine (hostname + Tailscale) and restart Ray
 ```
 
 ## Head node
@@ -55,7 +55,7 @@ Python, launchd to stay running). Install the Tailscale app (same account) and
 sign in, then:
 
 ```bash
-HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_mac.sh
+HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
 ```
 
 ## Deploy to the headless head node

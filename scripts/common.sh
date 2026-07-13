@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# common.sh - shared helpers for setup_head.sh and setup_worker.sh.
+# common.sh - shared helpers for the setup_*.sh scripts.
 # Sourced, not run directly. Callers must `set -Eeuo pipefail` first so the
 # ERR trap below is inherited by functions and fires on any failed command.
 
@@ -19,7 +19,7 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"   # full patch pin: Ray checks the E
 # (sets $ARCH to the Debian/Prometheus name: amd64 or arm64).
 preflight() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "This script targets Linux (systemd/apt). On macOS use: bash scripts/setup_mac.sh" >&2
+    echo "This script targets Linux (systemd/apt). On macOS use: bash scripts/setup_worker_mac.sh" >&2
     exit 1
   fi
   if [[ ${EUID} -eq 0 ]]; then

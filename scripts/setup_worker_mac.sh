@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# setup_mac.sh - join a macOS worker (e.g. the MacBook) to the Ray cluster.
+# setup_worker_mac.sh - join a macOS worker (e.g. the MacBook) to the Ray cluster.
 # macOS has no systemd or apt, so this uses uv for the pinned Python and launchd
 # (the macOS service manager) to keep the worker running and restart it on boot.
 #
 # Prerequisite: install the Tailscale app (same account) and sign in, so the head
 # node's name resolves.
 #
-#   HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_mac.sh
+#   HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -18,7 +18,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 if [[ -z "${HEAD_IP:-}" ]]; then
-  echo "Set HEAD_IP, e.g.: HEAD_IP=head01 RESOURCES='{\"mac\": 1}' bash scripts/setup_mac.sh" >&2
+  echo "Set HEAD_IP, e.g.: HEAD_IP=head01 RESOURCES='{\"mac\": 1}' bash scripts/setup_worker_mac.sh" >&2
   exit 1
 fi
 RESOURCES="${RESOURCES:-}"
