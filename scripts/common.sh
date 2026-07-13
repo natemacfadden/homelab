@@ -18,6 +18,11 @@ PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"   # full patch pin: Ray checks the E
 # Refuse to run as root, confirm sudo works, and detect the CPU architecture
 # (sets $ARCH to the Debian/Prometheus name: amd64 or arm64).
 preflight() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "This script targets Linux (systemd/apt). On macOS, join the cluster by hand -" >&2
+    echo "see the MacBook section in README.md." >&2
+    exit 1
+  fi
   if [[ ${EUID} -eq 0 ]]; then
     echo "Run as your normal user (with sudo rights), not root." >&2
     exit 1
