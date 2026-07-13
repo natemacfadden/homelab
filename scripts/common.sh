@@ -10,6 +10,11 @@ trap 'rc=$?; echo "ERROR (exit $rc) at ${BASH_SOURCE[0]}:$LINENO: $BASH_COMMAND"
 RAY_VERSION="2.48.0"     # single source of truth; identical on head and workers
 LAB_DIR="$HOME/raylab"
 
+# Build the venv from a specific interpreter so an active conda/pyenv env can't
+# silently pick a different Python. Ray requires the SAME Python minor version on
+# every node, so all boxes must agree. Override with PYTHON=/path/to/python3.
+PYTHON=${PYTHON:-/usr/bin/python3}
+
 # Refuse to run as root, confirm sudo works, and detect the CPU architecture
 # (sets $ARCH to the Debian/Prometheus name: amd64 or arm64).
 preflight() {
@@ -25,10 +30,21 @@ preflight() {
   esac
 }
 
-# Create the Ray venv (idempotently) and install the pinned Ray version.
+# Create the Ray venv and install the pinned Ray version. Rebuilds the venv if it
+# is missing or was built from a different Python minor version than $PYTHON, so a
+# stray conda/pyenv-built venv gets corrected automatically on the next run.
 setup_venv() {
   mkdir -p "$LAB_DIR"
-  [[ -x "$LAB_DIR/venv/bin/python" ]] || python3 -m venv "$LAB_DIR/venv"
+  local want have=""
+  want=$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+  if [[ -x "$LAB_DIR/venv/bin/python" ]]; then
+    have=$("$LAB_DIR/venv/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)
+  fi
+  if [[ "$have" != "$want" ]]; then
+    if [[ -n "$have" ]]; then echo "Rebuilding venv (Python $have -> $want)"; fi
+    rm -rf "$LAB_DIR/venv"
+    "$PYTHON" -m venv "$LAB_DIR/venv"
+  fi
   # shellcheck disable=SC1091
   source "$LAB_DIR/venv/bin/activate"
   pip install --upgrade pip

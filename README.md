@@ -71,6 +71,10 @@ ssh user@head-ip 'cd ~/homelab && bash scripts/setup_head.sh'
   setup_head.sh. Edit it and re-run the script to apply.
 - Pinned versions (Ray, Prometheus, node_exporter) live at the top of each
   script. Keep the Ray version the same on the head and all workers.
+- Every node must run the same Python minor version (Ray enforces this). The
+  scripts build the venv from /usr/bin/python3 so an active conda/pyenv env can't
+  slip in a different Python; override with PYTHON=/path/to/python3 if a box needs
+  it. A re-run rebuilds a venv that was built from the wrong Python.
 - Re-running either script applies changes and restarts the affected services.
 
 ```bash
