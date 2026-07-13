@@ -10,6 +10,7 @@ Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
 ```
 scripts/setup_head.sh     Ray head + Prometheus + cron
 scripts/setup_worker.sh   Ray worker + node_exporter (+ optional Docker/Grafana)
+scripts/common.sh         shared helpers sourced by both
 ```
 
 ## Head node
@@ -46,8 +47,16 @@ HEAD_IP=192.168.1.50 RESOURCES='{"small_task": 1}' bash scripts/setup_worker.sh
 ```
 
 Optional flags, both off by default: INSTALL_DOCKER=1 on workers that run
-containerized tasks; INSTALL_GRAFANA=1 on one box only. The MacBook has no
-systemd; join it by hand per the header comment in setup_worker.sh.
+containerized tasks; INSTALL_GRAFANA=1 on one box only.
+
+The MacBook has no systemd, so it isn't scripted. Join it by hand:
+
+```bash
+brew install python tmux
+python3 -m venv ~/raylab/venv
+~/raylab/venv/bin/pip install "ray[default]==2.48.0"
+~/raylab/venv/bin/ray start --address=<head-ip>:6379 --resources='{"mac": 1}'
+```
 
 ## Deploy to the headless head node
 
