@@ -59,9 +59,9 @@ cat > "$PLIST" <<EOF
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <!-- caffeinate keeps the Mac awake (no idle sleep) while the worker runs. -->
+    <!-- caffeinate -s keeps the Mac awake while the worker runs, but ONLY on AC
+         power (the -s assertion is inactive on battery, so battery isn't drained). -->
     <string>/usr/bin/caffeinate</string>
-    <string>-i</string>
     <string>-s</string>
     <string>$LAB_DIR/venv/bin/ray</string>
     <string>start</string>
@@ -95,6 +95,7 @@ echo
 echo "DONE. On the head, 'ray status' should now list this node (tag $RESOURCES)."
 echo "Log: $LAB_DIR/ray-worker.log   Stop: launchctl bootout gui/$(id -u)/$LABEL"
 echo
-echo "The worker runs under launchd, so it survives closing the shell and reboots,"
-echo "and caffeinate keeps the Mac awake while it runs. To keep running with the LID"
-echo "CLOSED too, also run once:  sudo pmset -a disablesleep 1   (undo: disablesleep 0)"
+echo "The worker runs under launchd, so it survives closing the shell and reboots."
+echo "caffeinate keeps the Mac awake while it runs, but only on AC power (on battery"
+echo "it sleeps normally). To also run with the LID CLOSED while plugged in, run once:"
+echo "  sudo pmset -c disablesleep 1     (AC only; undo: sudo pmset -c disablesleep 0)"
