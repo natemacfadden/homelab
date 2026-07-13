@@ -40,7 +40,7 @@ esac
 
 echo "== [1/7] Base packages =="
 sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip curl git tmux
+sudo apt-get install -y python3 python3-venv python3-pip curl git tmux cron
 
 echo "== [2/7] Python venv + Ray =="
 mkdir -p "$LAB_DIR"
@@ -142,8 +142,13 @@ source $LAB_DIR/venv/bin/activate
 # ray job submit --address http://localhost:8265 -- python trawl.py --repo "\$REPO"
 EOF
 chmod +x "$LAB_DIR/jobs/nightly_trawl.sh"
-( crontab -l 2>/dev/null | grep -v nightly_trawl ; \
-  echo "0 2 * * * $LAB_DIR/jobs/nightly_trawl.sh >> $LAB_DIR/jobs/trawl.log 2>&1" ) | crontab -
+# Rebuild the crontab: keep existing lines except our job, then (re)add it.
+# The `|| true` guards stop set -e/pipefail aborting when there's no crontab yet
+# or grep matches nothing (both exit non-zero, harmlessly, on a fresh box).
+{
+  crontab -l 2>/dev/null | grep -v nightly_trawl || true
+  echo "0 2 * * * $LAB_DIR/jobs/nightly_trawl.sh >> $LAB_DIR/jobs/trawl.log 2>&1"
+} | crontab -
 
 IP=$(hostname -I | awk '{print $1}')
 echo
