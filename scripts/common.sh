@@ -9,11 +9,10 @@ trap 'rc=$?; echo "ERROR (exit $rc) at ${BASH_SOURCE[0]}:$LINENO: $BASH_COMMAND"
 
 RAY_VERSION="2.48.0"     # single source of truth; identical on head and workers
 LAB_DIR="$HOME/raylab"
-
-# Build the venv from a specific interpreter so an active conda/pyenv env can't
-# silently pick a different Python. Ray requires the SAME Python minor version on
-# every node, so all boxes must agree. Override with PYTHON=/path/to/python3.
-PYTHON=${PYTHON:-/usr/bin/python3}
+# Ray requires the SAME Python minor version on every node. We pin it here and let
+# uv fetch that exact Python (see below), so the cluster's Python is independent of
+# each box's OS Python and its updates. Override with PYTHON_VERSION=3.x.
+PYTHON_VERSION="${PYTHON_VERSION:-3.13}"
 
 # Refuse to run as root, confirm sudo works, and detect the CPU architecture
 # (sets $ARCH to the Debian/Prometheus name: amd64 or arm64).
@@ -30,26 +29,32 @@ preflight() {
   esac
 }
 
-# Create the Ray venv and install the pinned Ray version. Rebuilds the venv if it
-# is missing or was built from a different Python minor version than $PYTHON, so a
-# stray conda/pyenv-built venv gets corrected automatically on the next run.
+# Install uv (Astral's Python/package manager) if it's missing. uv downloads
+# standalone CPython builds, so the cluster's Python doesn't depend on the OS one.
+# Installs to ~/.local/bin, which we add to PATH for the rest of this run.
+ensure_uv() {
+  command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  command -v uv >/dev/null 2>&1 || { echo "uv install failed (not on PATH)" >&2; exit 1; }
+}
+
+# Create the Ray venv on the pinned Python and install the pinned Ray version. uv
+# fetches the exact Python, so every node matches regardless of OS. Rebuilds the
+# venv if it's missing or on a different Python minor (e.g. a stray conda one).
 setup_venv() {
+  ensure_uv
   mkdir -p "$LAB_DIR"
-  local want have=""
-  want=$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+  uv python install "$PYTHON_VERSION"
+  local have=""
   if [[ -x "$LAB_DIR/venv/bin/python" ]]; then
     have=$("$LAB_DIR/venv/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)
   fi
-  if [[ "$have" != "$want" ]]; then
-    if [[ -n "$have" ]]; then echo "Rebuilding venv (Python $have -> $want)"; fi
+  if [[ "$have" != "$PYTHON_VERSION" ]]; then
+    if [[ -n "$have" ]]; then echo "Rebuilding venv (Python $have -> $PYTHON_VERSION)"; fi
     rm -rf "$LAB_DIR/venv"
-    "$PYTHON" -m venv "$LAB_DIR/venv"
+    uv venv --python "$PYTHON_VERSION" "$LAB_DIR/venv"
   fi
-  # shellcheck disable=SC1091
-  source "$LAB_DIR/venv/bin/activate"
-  pip install --upgrade pip
-  pip install "ray[default]==$RAY_VERSION"
-  deactivate
+  uv pip install --python "$LAB_DIR/venv/bin/python" "ray[default]==$RAY_VERSION"
 }
 
 install_tailscale() {
