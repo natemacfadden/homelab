@@ -83,8 +83,14 @@ cat > "$PLIST" <<EOF
 </plist>
 EOF
 
-# Reload the agent (bootout is a no-op the first time).
+# Reload the agent. bootout is a no-op the first time; wait for the old instance
+# to fully unload before bootstrapping, or launchd races and returns
+# "Input/output error" (exit 5) because the service is still loaded.
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+for _ in {1..10}; do
+  launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+  sleep 0.3
+done
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 
 echo
