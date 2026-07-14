@@ -11,6 +11,7 @@ scripts/setup_head.sh        Ray head + Prometheus + cron
 scripts/setup_worker.sh      Ray worker + node_exporter (+ optional Docker/Grafana)
 scripts/setup_worker_mac.sh  macOS worker (uv + launchd; no systemd)
 scripts/deploy.sh            push + run setup on every worker (fleet deploy)
+scripts/setup_llm.sh         llama.cpp server on the big box (OpenAI-compatible API)
 scripts/common.sh            shared helpers
 scripts/healthcheck.sh       verify a node's services are up
 scripts/rename.sh            rename a machine and restart Ray
@@ -76,6 +77,16 @@ setup (or `deploy.sh`) with a new value. CPUs/GPUs are auto-detected separately.
 | `INSTALL_SSH` | 1 (on) | installs OpenSSH; 0 to skip (see below) |
 | `SSH_KEY_ONLY` | 0 (off) | disable password auth (key-only); off = passwords left alone |
 | `SSH_TAILSCALE_ONLY` | 0 (off) | bind sshd to the Tailscale IP only |
+
+## LLM server (big box)
+
+OpenAI-compatible API on `:8081`. Serves the newest `.gguf` under `~/models`;
+re-run with `MODEL=/path/to.gguf` to swap. API key: `~/llm/api.key` (big box only).
+
+```bash
+bash scripts/setup_llm.sh
+curl http://compute01:8081/v1/models -H "Authorization: Bearer $(cat ~/llm/api.key)"
+```
 
 ## Deploy to all workers
 
