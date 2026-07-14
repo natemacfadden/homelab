@@ -17,10 +17,10 @@ source ./scripts/common.sh               # for the fail-loud ERR trap
 # One row per worker: the SSH host, the Ray tag it advertises, any INSTALL_*
 # flags, and linux|mac (which setup script to run).
 WORKERS=(
-  "ws1     | {\"cuda\": 1}       | INSTALL_DOCKER=1 INSTALL_GRAFANA=1 | linux"
-  "bigbox  | {\"big_memory\": 1} |                                    | linux"
-  "ws2     | {\"small_task\": 1} |                                    | linux"
-  "macbook | {\"mac\": 1}        |                                    | mac"
+  "compute01    | {\"amd\": 1, \"big_memory\": 1} | INSTALL_DOCKER=1 INSTALL_GRAFANA=1 | linux"
+  "compute02    | {\"cuda\": 1}                   |                                    | linux"
+  "compute03    | {\"amd\": 1, \"small_task\": 1} |                                    | linux"
+  "computemac01 | {\"mac\": 1}                    |                                    | mac"
 )
 SSH_USER="${SSH_USER:-$USER}"            # override if the login differs per box
 # ----------------------------------------------------------------------------

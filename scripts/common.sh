@@ -90,6 +90,7 @@ install_ssh() {
     sudo systemctl disable --now ssh.socket 2>/dev/null || true
   fi
 
+  sudo mkdir -p /run/sshd   # sshd -t needs this; systemd recreates it at boot
   sudo sshd -t || { echo "sshd config test failed; not restarting." >&2; return 1; }
   sudo systemctl enable ssh
   sudo systemctl restart ssh
