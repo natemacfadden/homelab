@@ -176,6 +176,22 @@ Auto-detects head, linux worker, or macOS worker (launchd), checks the services,
 dashboard/Prometheus ports, and `ray status`, and exits non-zero if anything is
 down (usable from cron or CI).
 
+**It also verifies the node actually joined the cluster**, not just that the
+service is running. `ray-worker` can be `active` (systemd only knows the local
+process forked) while the head never registered the node — wrong `HEAD_IP`, an
+unreachable GCS, or a Ray/Python version mismatch. So on a worker it also checks:
+
+- `head GCS <addr> reachable` — TCP to the head's `:6379` (from the `--address`
+  baked into the worker service).
+- `joined Ray cluster` — queries the head's node list and confirms *this* node is
+  there and **alive**. It reports one of `present`, `REGISTERED BUT DEAD` (the
+  head knew this node but it dropped — restart `ray-worker`), or `MISSING`
+  (never joined). This is the check that catches an "All checks passed" worker
+  that isn't in `ray status` on the head.
+
+On the head it adds a `cluster nodes` line (count of active nodes), so a head
+serving an empty cluster is obvious at a glance.
+
 ## Troubleshooting
 
 - **`Could not get lock ... unattended-upgr`** — Ubuntu's auto-updater holds the
