@@ -32,7 +32,7 @@ LAN IP) and saves it to `~/ip.txt`.
 ### Deploy to a headless head
 
 ```bash
-rsync -av --exclude .git ./ user@head-ip:~/homelab/
+tar czf - --exclude=.git . | ssh user@head-ip 'mkdir -p ~/homelab && tar xzf - -C ~/homelab'
 ssh user@head-ip 'cd ~/homelab && bash scripts/setup_head.sh'
 ```
 
@@ -90,8 +90,8 @@ curl http://compute01:8081/v1/models -H "Authorization: Bearer $(cat ~/llm/api.k
 
 ## Deploy to all workers
 
-`scripts/deploy.sh` rsyncs the repo to every worker and runs its setup script,
-so you don't SSH into each box by hand:
+`scripts/deploy.sh` copies the repo (tar over ssh) to every worker and runs its
+setup script, so you don't SSH into each box by hand:
 
 ```bash
 HEAD_IP=head01 bash scripts/deploy.sh          # provision/update all workers
@@ -202,7 +202,7 @@ serving an empty cluster is obvious at a glance.
 - **`No homelab services found`** — setup hasn't finished on that box, or you ran
   the check mid-reinstall before the service came up. Re-check once setup is done.
 - **`deploy.sh --check` vs plain `deploy.sh`** — `--check` only runs the
-  healthcheck already on each box (no code push); plain deploy rsyncs the current
+  healthcheck already on each box (no code push); plain deploy copies the current
   repo and re-runs setup. Push code changes with plain deploy, not `--check`.
 - **SSH `Permission denied (publickey)`** — the box is key-only and your key
   isn't on it. Add it with `ssh-copy-id` from a box that can still log in (or at

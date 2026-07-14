@@ -47,9 +47,10 @@ for row in "${WORKERS[@]}"; do
     continue
   fi
 
-  # push the repo, then run the matching setup script with this box's config
-  if ! rsync -az --exclude .git ./ "$target:~/homelab/"; then
-    echo "  rsync failed (SSH not set up? see README)" >&2; fail=1; continue
+  # push the repo (tar over ssh - no rsync needed on either end), then run its
+  # setup script with this box's config
+  if ! tar czf - --exclude=.git . | ssh "$target" 'mkdir -p ~/homelab && tar xzf - -C ~/homelab'; then
+    echo "  copy failed - check SSH to $host (see README)" >&2; fail=1; continue
   fi
   script=scripts/setup_worker.sh
   [[ "$os" == "mac" ]] && script=scripts/setup_worker_mac.sh
