@@ -76,7 +76,16 @@ cluster_member() {
   "$PY" - "$1" <<'PY'
 import socket, subprocess, sys
 addr = sys.argv[1]
+host, _, port = addr.rpartition(":")
 ips = set()
+# the local source ip used to reach the head - matches what Ray registers as
+# node_ip, and works on macOS where `hostname -I` doesn't exist
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect((host, int(port or 6379)))
+    ips.add(s.getsockname()[0]); s.close()
+except Exception:
+    pass
 for cmd in (["hostname", "-I"], ["tailscale", "ip", "-4"]):
     try:
         ips.update(subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).split())
