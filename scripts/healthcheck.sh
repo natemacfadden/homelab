@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # healthcheck.sh - verify a node's homelab services are up. Run it on the node.
-# Auto-detects head vs worker from which systemd units exist. Exits non-zero if
+# Auto-detects head/worker (systemd) or macOS worker (launchd). Exits non-zero if
 # any check fails, so it's usable from cron or CI.
 #
 set -uo pipefail   # deliberately NOT -e: run every check, then report.
@@ -19,6 +19,9 @@ check() {
   fi
 }
 has_unit() { systemctl cat "$1" >/dev/null 2>&1; }
+MAC_LABEL="com.homelab.ray-worker"
+launchd_loaded()  { launchctl print "gui/$(id -u)/$MAC_LABEL" >/dev/null 2>&1; }
+launchd_running() { launchctl print "gui/$(id -u)/$MAC_LABEL" 2>/dev/null | grep -qE 'pid = [0-9]+'; }
 
 if has_unit ray-head.service; then
   ran=1
@@ -37,9 +40,19 @@ if has_unit ray-worker.service; then
   check "node_exporter active" systemctl is-active --quiet node_exporter
 fi
 
+# macOS worker: launchd, not systemd. node_exporter isn't installed there.
+if [[ "$(uname -s)" == "Darwin" ]] && launchd_loaded; then
+  ran=1
+  echo "# macOS worker"
+  check "ray-worker (launchd) loaded"  launchd_loaded
+  check "ray-worker running"           launchd_running
+fi
+
 echo
 if [[ $ran -eq 0 ]]; then
-  echo "No homelab services found on this node (run a setup script first)." >&2
+  script=scripts/setup_worker.sh
+  [[ "$(uname -s)" == "Darwin" ]] && script=scripts/setup_worker_mac.sh
+  echo "No homelab services found on this node (run $script first)." >&2
   exit 1
 fi
 if [[ $fail -eq 0 ]]; then echo "All checks passed."; else echo "Some checks FAILED." >&2; fi
