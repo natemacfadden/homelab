@@ -10,6 +10,7 @@ Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
 scripts/setup_head.sh        Ray head + Prometheus + cron
 scripts/setup_worker.sh      Ray worker + node_exporter (+ optional Docker/Grafana)
 scripts/setup_worker_mac.sh  macOS worker (uv + launchd; no systemd)
+scripts/deploy.sh            push + run setup on every worker (fleet deploy)
 scripts/common.sh            shared helpers
 scripts/healthcheck.sh       verify a node's services are up
 scripts/rename.sh            rename a machine and restart Ray
@@ -65,6 +66,41 @@ HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
 | `INSTALL_GRAFANA` | 0 (off) | on for one box only (serves the dashboards) |
 | `INSTALL_SSH` | 1 (on) | installs + hardens OpenSSH; 0 to skip (see below) |
 | `SSH_TAILSCALE_ONLY` | 0 (off) | bind sshd to the Tailscale IP only |
+
+## Deploy to all workers
+
+`scripts/deploy.sh` rsyncs the repo to every worker and runs its setup script,
+so you don't SSH into each box by hand:
+
+```bash
+HEAD_IP=head01 bash scripts/deploy.sh          # provision/update all workers
+HEAD_IP=head01 bash scripts/deploy.sh --check  # healthcheck each instead
+```
+
+**The manifest** is the `WORKERS` array at the top of `deploy.sh` — you edit it
+in place (same idea as `NODE_TARGETS`). One row per worker, `|`-separated:
+
+```
+# host | RESOURCES | extra flags | os
+ws1     | {"cuda": 1}       | INSTALL_DOCKER=1 INSTALL_GRAFANA=1 | linux
+bigbox  | {"big_memory": 1} |                                    | linux
+macbook | {"mac": 1}        |                                    | mac
+```
+
+Set `SSH_USER` if your login differs from the current user.
+
+**Passwordless SSH (one-time):** `deploy.sh` logs in with an SSH key, not a
+password. From the box you deploy *from*:
+
+```bash
+ssh-keygen -t ed25519            # once, if you don't already have a key
+ssh-copy-id user@ws1             # once per worker — prompts for the password
+```
+
+Chicken-and-egg: a worker needs `openssh-server` before you can copy a key to
+it. So provision each box once by hand (it installs SSH via `INSTALL_SSH=1`),
+`ssh-copy-id` to it, then `deploy.sh` drives the whole fleet from then on — and
+the copied key also flips that box to key-only auth on the next run.
 
 ## SSH
 
