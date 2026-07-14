@@ -19,8 +19,8 @@ NODE_TARGETS=(ws1 ws2 bigbox macbook localhost)
 preflight
 
 echo "== [1/6] Base packages =="
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip curl git tmux cron
+apt_get update
+apt_get install -y python3 python3-venv python3-pip curl git tmux cron
 
 echo "== [2/6] Python venv + Ray =="
 setup_venv

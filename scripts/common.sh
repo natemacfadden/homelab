@@ -13,6 +13,10 @@ LAB_DIR="$HOME/raylab"
 # uv fetches this Python, independent of the OS (3.13 breaks Ray 2.48)
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"
 
+# apt-get that waits for the dpkg lock instead of failing when unattended-upgrades
+# holds it; tune the wait with APT_LOCK_TIMEOUT (seconds)
+apt_get() { sudo apt-get -o DPkg::Lock::Timeout="${APT_LOCK_TIMEOUT:-300}" "$@"; }
+
 # refuse root, confirm sudo, set $ARCH (amd64/arm64)
 preflight() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -66,7 +70,7 @@ install_tailscale() {
 # Tailscale IP
 install_ssh() {
   echo "== OpenSSH server (INSTALL_SSH=1; set INSTALL_SSH=0 to skip) =="
-  sudo apt-get install -y openssh-server
+  apt_get install -y openssh-server
   local conf=/etc/ssh/sshd_config.d/homelab.conf
   {
     echo "# Managed by homelab scripts/common.sh - edit here and re-run setup."

@@ -34,8 +34,8 @@ fi
 echo ">> Serving model: $MODEL"
 
 echo "== [1/4] Vulkan runtime =="
-sudo apt-get update
-sudo apt-get install -y libvulkan1 mesa-vulkan-drivers curl
+apt_get update
+apt_get install -y libvulkan1 mesa-vulkan-drivers curl
 
 # the GPU can only map what TTM allows; on this box the kernel cmdline raises
 # it to ~105 GB, so warn (don't edit grub) if that's missing, e.g. on a fresh OS

@@ -207,7 +207,9 @@ serving an empty cluster is obvious at a glance.
 ## Troubleshooting
 
 - **`Could not get lock ... unattended-upgr`** — Ubuntu's auto-updater holds the
-  apt lock. Wait for it to finish, then re-run; don't kill it (can corrupt dpkg).
+  apt lock. Setup now waits up to `APT_LOCK_TIMEOUT` seconds (default 300) for it
+  to free, so this should be rare; if it still times out, wait for the updater to
+  finish and re-run, or raise `APT_LOCK_TIMEOUT`. Don't kill it (can corrupt dpkg).
 - **Workers offline after re-running `setup_head.sh`** — restarting the head
   resets Ray, so workers drop and reconnect on their own over a minute or two.
   Normal. Nudge a straggler with `sudo systemctl restart ray-worker`.

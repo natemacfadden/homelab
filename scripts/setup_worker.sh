@@ -34,8 +34,8 @@ NODE_EXPORTER_VERSION="1.9.1"
 preflight
 
 echo "== [1/4] Base packages + Ray =="
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip curl git tmux uidmap
+apt_get update
+apt_get install -y python3 python3-venv python3-pip curl git tmux uidmap
 setup_venv
 
 # validate JSON, then make it systemd-safe: drop spaces and escape quotes, since
@@ -100,12 +100,12 @@ fi
 
 if [[ "${INSTALL_GRAFANA:-0}" == "1" ]]; then
   echo "== Optional: Grafana (this box serves the dashboards) =="
-  sudo apt-get install -y apt-transport-https software-properties-common
+  apt_get install -y apt-transport-https software-properties-common
   sudo mkdir -p /etc/apt/keyrings
   curl -fsSL https://apt.grafana.com/gpg.key | sudo tee /etc/apt/keyrings/grafana.asc >/dev/null
   echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" \
     | sudo tee /etc/apt/sources.list.d/grafana.list
-  sudo apt-get update && sudo apt-get install -y grafana
+  apt_get update && apt_get install -y grafana
   sudo systemctl enable --now grafana-server
   echo ">> Grafana http://<this-ip>:3000 - add Prometheus source http://$HEAD_IP:9090"
 fi
