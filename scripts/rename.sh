@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# rename.sh - rename THIS machine (OS hostname + Tailscale name) and restart Ray
-# so it picks up the new name. Works on Linux (hostnamectl/systemd) and macOS
-# (scutil/launchd). Run it on the box you're renaming:
+# rename.sh - rename this machine (OS hostname + Tailscale name) and restart Ray
+# so it picks up the new name; works on Linux (hostnamectl/systemd) and macOS
+# (scutil/launchd), run on the box you're renaming:
 #   bash scripts/rename.sh head01
 #
-# It only renames the machine you run it on. References to its OLD name on other
-# machines still need updating by hand - see the reminder printed at the end.
+# it only renames the machine you run it on; references to its old name on other
+# machines still need updating by hand (see the reminder printed at the end)
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -55,7 +55,7 @@ else
   fi
 
   echo "== Tailscale name =="
-  # `tailscale set` changes one flag; `up` would revert unspecified ones.
+  # `tailscale set` changes one flag; `up` would revert unspecified ones
   if command -v tailscale >/dev/null 2>&1 && tailscale status >/dev/null 2>&1; then
     sudo tailscale set --hostname="$NEW"
     echo "Set Tailscale name to '$NEW'."

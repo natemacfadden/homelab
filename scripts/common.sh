@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 #
-# common.sh - shared helpers for the setup_*.sh scripts.
-# Sourced, not run directly. Callers must `set -Eeuo pipefail` first so the
-# ERR trap below is inherited by functions and fires on any failed command.
+# common.sh - shared helpers for the setup_*.sh scripts
+# sourced, not run directly; callers must `set -Eeuo pipefail` first so the ERR
+# trap below is inherited by functions and fires on any failed command
 
-# Fail loudly: print where we died and what died, instead of exiting silently.
+# fail loudly: print where we died and what died, instead of exiting silently
 trap 'rc=$?; echo "ERROR (exit $rc) at ${BASH_SOURCE[0]}:$LINENO: $BASH_COMMAND" >&2' ERR
 
 RAY_VERSION="2.48.0"     # identical on head and workers
 LAB_DIR="$HOME/raylab"
-# Ray checks the EXACT Python version, so pin to the patch and match on every node.
-# uv fetches this Python, so it's independent of the OS. (3.13 breaks Ray 2.48.)
+# Ray checks the exact Python version, so pin to the patch and match on every node
+# uv fetches this Python, independent of the OS (3.13 breaks Ray 2.48)
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"
 
-# Refuse root, confirm sudo, set $ARCH (amd64/arm64).
+# refuse root, confirm sudo, set $ARCH (amd64/arm64)
 preflight() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "This script targets Linux (systemd/apt). On macOS use: bash scripts/setup_worker_mac.sh" >&2
@@ -31,14 +31,14 @@ preflight() {
   esac
 }
 
-# Install uv if missing (fetches standalone CPython, independent of the OS Python).
+# install uv if missing (fetches standalone CPython, independent of the OS Python)
 ensure_uv() {
   command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
   command -v uv >/dev/null 2>&1 || { echo "uv install failed (not on PATH)" >&2; exit 1; }
 }
 
-# Build the Ray venv on the pinned Python; rebuild if missing or on a wrong version.
+# build the Ray venv on the pinned Python; rebuild if missing or on a wrong version
 setup_venv() {
   ensure_uv
   mkdir -p "$LAB_DIR"
@@ -47,7 +47,7 @@ setup_venv() {
   if [[ -x "$LAB_DIR/venv/bin/python" ]]; then
     have=$("$LAB_DIR/venv/bin/python" -c 'import platform; print(platform.python_version())' 2>/dev/null || true)
   fi
-  # Rebuild unless it matches the pin (exact, or as a prefix for a minor-only pin).
+  # rebuild unless it matches the pin (exact, or as a prefix for a minor-only pin)
   if [[ "$have" != "$PYTHON_VERSION" && "$have" != "$PYTHON_VERSION".* ]]; then
     if [[ -n "$have" ]]; then echo "Rebuilding venv (Python $have -> $PYTHON_VERSION)"; fi
     rm -rf "$LAB_DIR/venv"
@@ -61,10 +61,9 @@ install_tailscale() {
   echo ">> Run 'sudo tailscale up' once, manually, to authenticate."
 }
 
-# install_ssh - install OpenSSH and write an idempotent drop-in. Leaves password
-# auth alone by default; only disables it when you explicitly ask (SSH_KEY_ONLY=1),
-# so a setup/deploy run can never lock you out. SSH_TAILSCALE_ONLY=1 binds to the
-# Tailscale IP.
+# install OpenSSH + an idempotent drop-in; leaves password auth alone unless
+# SSH_KEY_ONLY=1 (so a run can't lock you out); SSH_TAILSCALE_ONLY=1 binds to the
+# Tailscale IP
 install_ssh() {
   echo "== OpenSSH server (INSTALL_SSH=1; set INSTALL_SSH=0 to skip) =="
   sudo apt-get install -y openssh-server
@@ -82,7 +81,7 @@ install_ssh() {
     fi
   } | sudo tee "$conf" >/dev/null
 
-  # ssh.socket would override ListenAddress, so hand the port to sshd.service.
+  # ssh.socket would override ListenAddress, so hand the port to sshd.service
   if [[ "${SSH_TAILSCALE_ONLY:-0}" == "1" ]]; then
     sudo systemctl disable --now ssh.socket 2>/dev/null || true
   fi
@@ -93,14 +92,14 @@ install_ssh() {
   sudo systemctl restart ssh
 }
 
-# write_service NAME  < unit-file-on-stdin
-# Install a systemd unit and (re)start it; the restart is what applies re-run edits.
+# write_service name < unit-file-on-stdin
+# install a systemd unit and (re)start it; the restart applies re-run edits
 write_service() {
   local name=$1
   sudo tee "/etc/systemd/system/${name}.service" >/dev/null
   sudo systemctl daemon-reload
   sudo systemctl enable "$name"
-  # On failure, surface the service's own logs (where Ray prints the real error).
+  # on failure, surface the service's own logs (where Ray prints the real error)
   if ! sudo systemctl restart "$name"; then
     echo "--- $name failed to start; recent logs: ---" >&2
     journalctl -u "$name" -n 20 --no-pager -o cat >&2 || true
@@ -108,8 +107,8 @@ write_service() {
   fi
 }
 
-# Run the health check to confirm the install. Non-fatal: a warming-up service
-# shouldn't fail the installer, so we swallow non-zero.
+# run the health check to confirm the install; non-fatal, so a warming-up service
+# doesn't fail the installer (swallow non-zero)
 run_healthcheck() {
   echo "== Health check =="
   sleep 5   # let (re)started services answer their ports

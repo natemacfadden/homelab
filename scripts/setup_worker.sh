@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# setup_worker.sh - home lab WORKER NODE (Debian/Ubuntu).
-# Installs a Ray worker that joins the head, plus node_exporter; optionally
-# rootless Docker and Grafana. Layered memory limits: Ray kills greedy tasks at
-# 80%, and a systemd cgroup cap (95%) is the kernel backstop.
+# setup_worker.sh - home lab worker node (Debian/Ubuntu)
+# installs a Ray worker that joins the head, plus node_exporter; optionally
+# rootless Docker and Grafana; layered memory limits: Ray kills greedy tasks at
+# 80%, and a systemd cgroup cap (95%) is the kernel backstop
 #
-# Usage (HEAD_IP required; RESOURCES is this box's Ray tag):
+# usage (HEAD_IP required; RESOURCES is this box's Ray tag):
 #   HEAD_IP=192.168.1.50 RESOURCES='{"cuda": 1}' bash scripts/setup_worker.sh
-#   ... add INSTALL_DOCKER=1 and/or INSTALL_GRAFANA=1 (Grafana on ONE box only)
-# Idempotent: safe to re-run.
+#   ... add INSTALL_DOCKER=1 and/or INSTALL_GRAFANA=1 (Grafana on one box only)
+# idempotent: safe to re-run
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -25,7 +25,7 @@ LAN IP), and optionally set RESOURCES (this box's Ray tag). Examples:
 USAGE
   exit 1
 fi
-# NB: not "${RESOURCES:-{}}" - bash ends that at the first '}', corrupting the JSON.
+# not "${RESOURCES:-{}}" - bash ends that at the first '}', corrupting the JSON
 RESOURCES="${RESOURCES:-}"
 if [[ -z "$RESOURCES" ]]; then RESOURCES='{}'; fi   # default: generic worker
 RAY_PORT=6379                  # must match the head node's port
@@ -38,8 +38,8 @@ sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip curl git tmux uidmap
 setup_venv
 
-# Validate JSON, then make it systemd-safe: drop spaces and escape quotes, since
-# systemd strips unescaped quotes and splits ExecStart on spaces.
+# validate JSON, then make it systemd-safe: drop spaces and escape quotes, since
+# systemd strips unescaped quotes and splits ExecStart on spaces
 "$LAB_DIR/venv/bin/python" -c 'import json,sys; json.loads(sys.argv[1])' "$RESOURCES" 2>/dev/null || {
   echo "RESOURCES is not valid JSON: $RESOURCES" >&2
   echo "Use double-quoted keys, e.g.  RESOURCES='{\"cuda\": 1}'" >&2
@@ -49,15 +49,9 @@ RES_UNIT=${RESOURCES// /}
 RES_UNIT=${RES_UNIT//\"/\\\"}
 
 echo "== [2/4] Ray worker service (foreground + self-healing) =="
-# --block runs ray in the FOREGROUND (like the macOS launchd worker), so systemd
-# tracks the raylet itself: `ray start --block` exits the moment any Ray daemon
-# it manages dies, which trips Restart and brings the worker back. The old
-# Type=forking hid this - `ray start` forked the daemons, exited 0, and systemd
-# latched onto that "success", so a later raylet crash went unnoticed (Restart
-# never fired) and the node sat "active" in systemd while DEAD in the cluster.
-# StartLimitIntervalSec=0 disables the start-rate limiter so a worker keeps
-# retrying (every RestartSec) while the head is briefly down/rebooting instead of
-# giving up and staying failed.
+# --block keeps ray in the foreground so systemd tracks the raylet and restarts
+# it when it dies (the old Type=forking exited 0 and hid crashes, leaving the node
+# "active" but dead); StartLimitIntervalSec=0 keeps retrying while the head reboots
 write_service ray-worker <<EOF
 [Unit]
 Description=Ray worker (joins $HEAD_IP)

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# setup_worker_mac.sh - join a macOS worker (e.g. the MacBook) to the Ray cluster.
+# setup_worker_mac.sh - join a macOS worker (e.g. the MacBook) to the Ray cluster
 # macOS has no systemd or apt, so this uses uv for the pinned Python and launchd
-# (the macOS service manager) to keep the worker running and restart it on boot.
+# (the macOS service manager) to keep the worker running and restart it on boot
 #
-# Prerequisite: install the Tailscale app (same account) and sign in, so the head
-# node's name resolves.
+# prerequisite: install the Tailscale app (same account) and sign in, so the head
+# node's name resolves
 #
 #   HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
 #
@@ -27,7 +27,7 @@ RAY_PORT=6379
 LABEL="com.homelab.ray-worker"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
-# Fail fast if the head isn't reachable - usually Tailscale isn't connected here.
+# fail fast if the head isn't reachable - usually Tailscale isn't connected here
 if ! nc -z -G 3 "$HEAD_IP" "$RAY_PORT" 2>/dev/null; then
   cat >&2 <<EOF
 ERROR: can't reach the Ray head at $HEAD_IP:$RAY_PORT.
@@ -46,8 +46,8 @@ setup_venv
 
 echo "== [2/2] launchd worker service =="
 mkdir -p "$HOME/Library/LaunchAgents"
-# --block keeps ray in the foreground for launchd; KeepAlive restarts it. launchd
-# passes an argv array, so the resources JSON needs no shell quoting.
+# --block keeps ray in the foreground for launchd; KeepAlive restarts it (launchd
+# passes an argv array, so the resources JSON needs no shell quoting)
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -56,7 +56,7 @@ cat > "$PLIST" <<EOF
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <!-- caffeinate -s: stay awake while running, but only on AC (not battery). -->
+    <!-- caffeinate -s: stay awake while running, but only on AC (not battery) -->
     <string>/usr/bin/caffeinate</string>
     <string>-s</string>
     <string>$LAB_DIR/venv/bin/ray</string>
@@ -68,9 +68,9 @@ cat > "$PLIST" <<EOF
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <!-- Ray needs this opt-in for a multi-node cluster on macOS. -->
+    <!-- Ray needs this opt-in for a multi-node cluster on macOS -->
     <key>RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER</key><string>1</string>
-    <!-- Shed tasks at 80% whole-machine memory (matches the Linux workers). -->
+    <!-- shed tasks at 80% whole-machine memory (matches the Linux workers) -->
     <key>RAY_memory_usage_threshold</key><string>0.80</string>
   </dict>
   <key>RunAtLoad</key><true/>
@@ -81,8 +81,8 @@ cat > "$PLIST" <<EOF
 </plist>
 EOF
 
-# Reload: wait for the old instance to unload before bootstrap, or launchd races
-# and returns "Input/output error" (exit 5).
+# reload: wait for the old instance to unload before bootstrap, or launchd races
+# and returns "Input/output error" (exit 5)
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 for _ in {1..10}; do
   launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
@@ -92,13 +92,13 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST"
 
 if [[ "${INSTALL_SSH:-1}" == "1" ]]; then
   echo "== OpenSSH / Remote Login (INSTALL_SSH=1; set INSTALL_SSH=0 to skip) =="
-  # Enable Remote Login; needs Full Disk Access, else flip the toggle by hand.
+  # enable Remote Login; needs Full Disk Access, else flip the toggle by hand
   if sudo systemsetup -setremotelogin on 2>/dev/null; then
     echo ">> Remote Login enabled."
   else
     echo ">> Enable by hand: System Settings > General > Sharing > Remote Login." >&2
   fi
-  # Harden only if a key exists and sshd_config includes the drop-in dir (Ventura+).
+  # harden only if a key exists and sshd_config includes the drop-in dir (Ventura+)
   keys="$HOME/.ssh/authorized_keys"
   if [[ -s "$keys" ]] && grep -q '^Include /etc/ssh/sshd_config.d/' /etc/ssh/sshd_config 2>/dev/null; then
     printf 'PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n' \

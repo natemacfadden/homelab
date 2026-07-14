@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
 #
-# healthcheck.sh - verify a node's homelab services are up. Run it on the node.
-# Auto-detects head/worker (systemd) or macOS worker (launchd). Exits non-zero if
-# any check fails, so it's usable from cron or CI.
+# healthcheck.sh - verify a node's homelab services are up; run it on the node
+# auto-detects head/worker (systemd) or macOS worker (launchd), exits non-zero if
+# any check fails (usable from cron or CI), and confirms the node actually joined
+# the cluster, not just that its service is running
 #
-# Beyond "is the process running?", it verifies the node actually JOINED the Ray
-# cluster: a worker's ray-worker service can be `active` (systemd only knows the
-# local process forked) while the node never registered with the head - wrong
-# HEAD_IP, unreachable GCS, or a Ray/Python version mismatch. The cluster checks
-# below query the head's GCS and confirm THIS node is listed as alive, so that
-# silent non-join fails the check instead of passing.
-#
-set -uo pipefail   # deliberately NOT -e: run every check, then report.
+set -uo pipefail   # deliberately not -e: run every check, then report
 LAB_DIR="$HOME/raylab"
 PY=""
 [[ -x "$LAB_DIR/venv/bin/python" ]] && PY="$LAB_DIR/venv/bin/python"
@@ -28,9 +22,8 @@ check() {
   fi
 }
 
-# Like check, but appends the command's last stdout line as a detail (so a
-# membership check can report "3 node(s) alive; this node MISSING" or the reason
-# a join failed). stderr is dropped; the helpers print their summary to stdout.
+# like check, but appends the command's last stdout line as a detail; stderr is
+# dropped, so helpers print their summary to stdout
 report() {
   local name=$1; shift
   local out rc
@@ -50,8 +43,8 @@ MAC_PLIST="$HOME/Library/LaunchAgents/$MAC_LABEL.plist"
 launchd_loaded()  { launchctl print "gui/$(id -u)/$MAC_LABEL" >/dev/null 2>&1; }
 launchd_running() { launchctl print "gui/$(id -u)/$MAC_LABEL" 2>/dev/null | grep -qE 'pid = [0-9]+'; }
 
-# The head address this worker was told to join, from its service definition
-# (systemd unit on linux, launchd plist on macOS). Prints "host:port".
+# head address this worker joins, read from its service definition (systemd unit
+# on linux, launchd plist on macOS); prints "host:port"
 worker_head_addr() {
   local a
   a=$(systemctl cat ray-worker.service 2>/dev/null \
@@ -62,8 +55,8 @@ worker_head_addr() {
   printf '%s' "$a"
 }
 
-# TCP-reachability of the head's GCS. Uses the venv Python (portable; macOS has
-# no `timeout` and its bash lacks a usable /dev/tcp for this).
+# tcp-reachability of the head's GCS, via the venv python (portable; macOS lacks
+# timeout and a usable /dev/tcp)
 tcp_reachable() {
   "$PY" - "$1" <<'PY'
 import socket, sys
@@ -75,16 +68,10 @@ except Exception as e:
 PY
 }
 
-# Does the head's cluster actually list THIS node as ALIVE? Queries the head's
-# GCS with Ray's state API (list_nodes) - which, unlike ray.init(address=...),
-# does NOT need a local raylet, so it works as an external probe. It returns each
-# node's IP and ALIVE/DEAD state; we match our own IPs/hostname against them. A
-# failed query also catches a down head or a Ray/Python version mismatch. Prints
-# a one-line summary for `report`. Distinguishes the three states that matter:
-#   present            - we're in the cluster and alive (the good case)
-#   REGISTERED BUT DEAD - the head knew us but marks us dead (compute03's case:
-#                         service `active`, node dropped and never rejoined)
-#   MISSING             - the head has never seen this node (wrong HEAD_IP, etc.)
+# does the head's node list show this node alive? uses the state API (list_nodes),
+# which unlike ray.init(address=...) needs no local raylet, so it works as an
+# external probe and also catches a down head or version mismatch; matches our own
+# ips/hostname against the nodes and reports present / registered-but-dead / missing
 cluster_member() {
   "$PY" - "$1" <<'PY'
 import socket, subprocess, sys
@@ -116,10 +103,8 @@ sys.exit(1)
 PY
 }
 
-# Head-side: how many nodes the head currently sees. Parses `ray status` (the
-# CLI already verified to work on the head), counting entries in its Active
-# section. Informational - a head with no workers is still a healthy head, but
-# seeing "1 active" here is the fast way to notice the fleet didn't join.
+# head-side node count, parsed from `ray status`; informational, to spot a head
+# serving an empty cluster
 cluster_count() {
   "$LAB_DIR/venv/bin/ray" status 2>/dev/null | awk '
     /^Active:/   { inactive = 1; next }
@@ -128,7 +113,7 @@ cluster_count() {
     END { printf "%d node(s) active", c+0; exit (c+0 > 0 ? 0 : 1) }'
 }
 
-# Worker cluster checks (linux + macOS): is the head reachable, and did we join?
+# worker cluster checks (linux + macOS): is the head reachable, and did we join?
 cluster_checks() {
   local addr; addr=$(worker_head_addr)
   if [[ -z "$PY" ]]; then
@@ -162,7 +147,7 @@ if has_unit ray-worker.service; then
   cluster_checks
 fi
 
-# macOS worker: launchd, not systemd. node_exporter isn't installed there.
+# macOS worker: launchd, not systemd; node_exporter isn't installed there
 if [[ "$(uname -s)" == "Darwin" ]] && launchd_loaded; then
   ran=1
   echo "# macOS worker"

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# setup_llm.sh - llama.cpp server on the big box (Strix Halo, Vulkan).
-# Downloads a pinned prebuilt Vulkan release, generates an API key once, and
-# installs a systemd service serving an OpenAI-compatible API on the network.
+# setup_llm.sh - llama.cpp server on the big box (Strix Halo, Vulkan)
+# downloads a pinned prebuilt Vulkan release, generates an API key once, and
+# installs a systemd service serving an OpenAI-compatible API on the network
 #
-# Usage (MODEL optional; defaults to the newest .gguf under ~/models):
+# usage (MODEL optional; defaults to the newest .gguf under ~/models):
 #   bash scripts/setup_llm.sh
 #   MODEL=~/models/foo.gguf LLM_PORT=8081 bash scripts/setup_llm.sh
-# Idempotent: safe to re-run. Re-run with a different MODEL to swap models.
+# idempotent: safe to re-run; re-run with a different MODEL to swap models
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -20,8 +20,8 @@ CTX_SIZE="${CTX_SIZE:-32768}"
 
 preflight
 
-# Pick a model: explicit MODEL env, else the newest gguf in ~/models.
-# Multi-part models (-00001-of-...) load from part 1; skip the later parts.
+# pick a model: explicit MODEL env, else the newest gguf in ~/models
+# multi-part models (-00001-of-...) load from part 1; skip the later parts
 MODEL="${MODEL:-}"
 if [[ -z "$MODEL" ]]; then
   MODEL=$(find "$HOME/models" -name '*.gguf' ! -name '*-of-*' -o -name '*-00001-of-*' 2>/dev/null \
@@ -37,8 +37,8 @@ echo "== [1/4] Vulkan runtime =="
 sudo apt-get update
 sudo apt-get install -y libvulkan1 mesa-vulkan-drivers curl
 
-# The GPU can only map what TTM allows; on this box the kernel cmdline raises
-# it to ~105 GB. Warn (don't edit grub) if that's missing, e.g. on a fresh OS.
+# the GPU can only map what TTM allows; on this box the kernel cmdline raises
+# it to ~105 GB, so warn (don't edit grub) if that's missing, e.g. on a fresh OS
 if ! grep -q 'ttm.pages_limit' /proc/cmdline; then
   echo "WARNING: ttm.pages_limit not set; GPU-visible memory is capped near 64 GB." >&2
   echo "Add to GRUB_CMDLINE_LINUX_DEFAULT and update-grub + reboot:" >&2
@@ -63,7 +63,7 @@ fi
 ln -sfn "$DEST" "$LLM_DIR/current"
 
 echo "== [3/4] API key + service =="
-# Generate once, reuse on re-runs; clients read the same file or copy the value.
+# generate once, reuse on re-runs; clients read the same file or copy the value
 KEY_FILE="$LLM_DIR/api.key"
 if [[ ! -s "$KEY_FILE" ]]; then
   (umask 077; openssl rand -hex 24 > "$KEY_FILE")
@@ -88,7 +88,7 @@ WantedBy=multi-user.target
 EOF
 
 echo "== [4/4] Health check =="
-# First start loads the whole model from disk; give it a while.
+# first start loads the whole model from disk; give it a while
 for i in $(seq 1 60); do
   curl -fsS "http://localhost:$LLM_PORT/health" >/dev/null 2>&1 && break
   sleep 5

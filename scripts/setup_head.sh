@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# setup_head.sh - home lab HEAD NODE (always-on Debian box).
-# Installs Ray head, Prometheus, and a nightly cron stub; keeps the box awake
-# with the lid closed. Run as your normal user with sudo rights:
+# setup_head.sh - home lab head node (always-on Debian box)
+# installs Ray head, Prometheus, and a nightly cron stub, and keeps the box awake
+# with the lid closed; run as your normal user with sudo rights:
 #   bash scripts/setup_head.sh
-# Idempotent: safe to re-run (re-running restarts ray-head and prometheus).
+# idempotent: safe to re-run (re-running restarts ray-head and prometheus)
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -13,7 +13,7 @@ source ./common.sh
 PROMETHEUS_VERSION="3.5.0"
 PROM_DIR="/opt/prometheus"
 RAY_PORT=6379
-# Prometheus scrape targets (source of truth; regenerates prometheus.yml on re-run).
+# Prometheus scrape targets (source of truth; regenerates prometheus.yml on re-run)
 NODE_TARGETS=(ws1 ws2 bigbox macbook localhost)
 
 preflight
@@ -74,7 +74,7 @@ WantedBy=multi-user.target
 EOF
 
 echo "== [5/6] Always-on (ignore lid, disable sleep) =="
-# Always-on server: a lid-close suspend would take the cluster's head down.
+# always-on server: a lid-close suspend would take the cluster's head down
 sudo mkdir -p /etc/systemd/logind.conf.d
 sudo tee /etc/systemd/logind.conf.d/homelab-headless.conf >/dev/null <<'EOF'
 [Login]
@@ -90,12 +90,12 @@ install_tailscale
 mkdir -p "$LAB_DIR/jobs"
 cat > "$LAB_DIR/jobs/nightly_trawl.sh" <<EOF
 #!/usr/bin/env bash
-# Pick the next repo (your scoring logic here), then submit it to Ray.
+# pick the next repo (your scoring logic here), then submit it to Ray
 source $LAB_DIR/venv/bin/activate
 # ray job submit --address http://localhost:8265 -- python trawl.py --repo "\$REPO"
 EOF
 chmod +x "$LAB_DIR/jobs/nightly_trawl.sh"
-# Rebuild the crontab, keeping other lines. `|| true`: fresh box has no crontab.
+# rebuild the crontab, keeping other lines (|| true: fresh box has no crontab)
 {
   crontab -l 2>/dev/null | grep -v nightly_trawl || true
   echo "0 2 * * * $LAB_DIR/jobs/nightly_trawl.sh >> $LAB_DIR/jobs/trawl.log 2>&1"
