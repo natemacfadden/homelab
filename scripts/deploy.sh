@@ -54,7 +54,9 @@ for row in "${WORKERS[@]}"; do
   fi
   script=scripts/setup_worker.sh
   [[ "$os" == "mac" ]] && script=scripts/setup_worker_mac.sh
-  if ! ssh "$target" "cd ~/homelab && HEAD_IP='$HEAD_IP' RESOURCES='$res' $flags bash $script"; then
+  # -t gives sudo a tty so it can prompt for a password (interactive per host);
+  # set up passwordless sudo on the workers to make this hands-off (see README)
+  if ! ssh -t "$target" "cd ~/homelab && HEAD_IP='$HEAD_IP' RESOURCES='$res' $flags bash $script"; then
     echo "  setup failed on $host" >&2; fail=1
   fi
 done

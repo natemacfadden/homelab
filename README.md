@@ -124,7 +124,19 @@ ssh nate@compute01 true && echo OK                  # verify: no password prompt
 
 A box needs an SSH server before you can copy a key to it: a fresh linux worker
 gets one from its first setup run (`INSTALL_SSH=1`); the mac needs Remote Login
-on (see SSH). After that, `deploy.sh` drives the whole fleet hands-off.
+on (see SSH).
+
+**Sudo during deploy:** the setup scripts need root, so `deploy.sh` runs them
+with `ssh -t` and you type each box's sudo password once per deploy. To make
+deploys fully hands-off, give your user passwordless sudo on each worker (one
+time, at the console or over an interactive ssh):
+
+```bash
+echo "$USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/homelab   # on each worker
+```
+
+Scope it to the commands setup runs (apt-get, systemctl, tee, tar, …) instead of
+`ALL` if you want a tighter grant.
 
 ## SSH
 
