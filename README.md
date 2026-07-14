@@ -58,6 +58,15 @@ clustering). Install the Tailscale app, sign in, then:
 HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
 ```
 
+### RESOURCES tags
+
+Arbitrary labels you invent so tasks can target a box; a task runs there only if
+it requests the tag (`@ray.remote(resources={"cuda": 1})`). The number is a
+concurrency limit (units available), not hardware — `{"cuda": 1}` = one such task
+at a time. A box can advertise several: `{"amd": 1, "big_memory": 1}`. The value
+is baked into the box's service, so it survives reboots; change it by re-running
+setup (or `deploy.sh`) with a new value. CPUs/GPUs are auto-detected separately.
+
 ### Optional flags
 
 | Flag | Default | Use |
@@ -82,26 +91,29 @@ HEAD_IP=head01 bash scripts/deploy.sh --check  # healthcheck each instead
 in place (same idea as `NODE_TARGETS`). One row per worker, `|`-separated:
 
 ```
-# host | RESOURCES | extra flags | os
-ws1     | {"cuda": 1}       | INSTALL_DOCKER=1 INSTALL_GRAFANA=1 | linux
-bigbox  | {"big_memory": 1} |                                    | linux
-macbook | {"mac": 1}        |                                    | mac
+# host                       | RESOURCES                   | extra flags | os
+compute01                    | {"amd": 1, "big_memory": 1} |             | linux
+compute02                    | {"cuda": 1}                 |             | linux
+compute03                    | {"amd": 1, "small_task": 1} |             | linux
+natemacfadden@computemac01   | {"mac": 1}                  |             | mac
 ```
 
-Set `SSH_USER` if your login differs from the current user.
+A bare host logs in as `SSH_USER` (defaults to your current user); write
+`user@host` for a box whose login differs (e.g. the mac's `natemacfadden`).
 
-**Passwordless SSH (one-time):** `deploy.sh` logs in with an SSH key, not a
-password. From the box you deploy *from*:
+**Passwordless SSH (one-time):** `deploy.sh` logs in with an SSH key. Run from
+the box you deploy *from* (e.g. the head):
 
 ```bash
-ssh-keygen -t ed25519            # once, if you don't already have a key
-ssh-copy-id user@ws1             # once per worker — prompts for the password
+ls ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519   # once, if you have no key
+ssh-copy-id nate@compute01                          # once per box, uses its login
+ssh-copy-id natemacfadden@computemac01
+ssh nate@compute01 true && echo OK                  # verify: no password prompt
 ```
 
-Chicken-and-egg: a worker needs `openssh-server` before you can copy a key to
-it. So provision each box once by hand (it installs SSH via `INSTALL_SSH=1`),
-`ssh-copy-id` to it, then `deploy.sh` drives the whole fleet from then on — and
-the copied key also flips that box to key-only auth on the next run.
+A box needs an SSH server before you can copy a key to it: a fresh linux worker
+gets one from its first setup run (`INSTALL_SSH=1`); the mac needs Remote Login
+on (see SSH). After that, `deploy.sh` drives the whole fleet hands-off.
 
 ## SSH
 
@@ -149,8 +161,27 @@ Runs automatically at the end of each setup script; run it any time on a node:
 bash scripts/healthcheck.sh
 ```
 
-Auto-detects head vs worker, checks the services, dashboard/Prometheus ports, and
-`ray status`, and exits non-zero if anything is down (usable from cron or CI).
+Auto-detects head, linux worker, or macOS worker (launchd), checks the services,
+dashboard/Prometheus ports, and `ray status`, and exits non-zero if anything is
+down (usable from cron or CI).
+
+## Troubleshooting
+
+- **`Could not get lock ... unattended-upgr`** — Ubuntu's auto-updater holds the
+  apt lock. Wait for it to finish, then re-run; don't kill it (can corrupt dpkg).
+- **Workers offline after re-running `setup_head.sh`** — restarting the head
+  resets Ray, so workers drop and reconnect on their own over a minute or two.
+  Normal. Nudge a straggler with `sudo systemctl restart ray-worker`.
+- **`No homelab services found`** — setup hasn't finished on that box, or you ran
+  the check mid-reinstall before the service came up. Re-check once setup is done.
+- **`deploy.sh --check` vs plain `deploy.sh`** — `--check` only runs the
+  healthcheck already on each box (no code push); plain deploy rsyncs the current
+  repo and re-runs setup. Push code changes with plain deploy, not `--check`.
+- **SSH `Permission denied (publickey)`** — the box is key-only and your key
+  isn't on it. Add it with `ssh-copy-id` from a box that can still log in (or at
+  the console). Setup never disables passwords unless you set `SSH_KEY_ONLY=1`.
+- **SSH `Connection closed` (mac)** — Remote Login is off, or the login/key is
+  wrong. Turn on Remote Login and connect as the mac's actual account.
 
 ## URLs
 

@@ -18,7 +18,7 @@ source ./scripts/common.sh               # for the fail-loud ERR trap
 # flags, and linux|mac (which setup script to run). The host may be "user@host"
 # to log in as a specific user; a bare host uses SSH_USER.
 WORKERS=(
-  "compute01    | {\"amd\": 1, \"big_memory\": 1} | INSTALL_DOCKER=1 INSTALL_GRAFANA=1 | linux"
+  "compute01    | {\"amd\": 1, \"big_memory\": 1} |                                    | linux"
   "compute02    | {\"cuda\": 1}                   |                                    | linux"
   "compute03    | {\"amd\": 1, \"small_task\": 1} |                                    | linux"
   "natemacfadden@computemac01 | {\"mac\": 1}      |                                    | mac"
