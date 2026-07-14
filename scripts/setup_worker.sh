@@ -48,18 +48,29 @@ setup_venv
 RES_UNIT=${RESOURCES// /}
 RES_UNIT=${RES_UNIT//\"/\\\"}
 
-echo "== [2/4] Ray worker service (layered memory limits) =="
+echo "== [2/4] Ray worker service (foreground + self-healing) =="
+# --block runs ray in the FOREGROUND (like the macOS launchd worker), so systemd
+# tracks the raylet itself: `ray start --block` exits the moment any Ray daemon
+# it manages dies, which trips Restart and brings the worker back. The old
+# Type=forking hid this - `ray start` forked the daemons, exited 0, and systemd
+# latched onto that "success", so a later raylet crash went unnoticed (Restart
+# never fired) and the node sat "active" in systemd while DEAD in the cluster.
+# StartLimitIntervalSec=0 disables the start-rate limiter so a worker keeps
+# retrying (every RestartSec) while the head is briefly down/rebooting instead of
+# giving up and staying failed.
 write_service ray-worker <<EOF
 [Unit]
 Description=Ray worker (joins $HEAD_IP)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 [Service]
-Type=forking
+Type=simple
 User=$USER
-ExecStart=$LAB_DIR/venv/bin/ray start --address=$HEAD_IP:$RAY_PORT --resources=$RES_UNIT --metrics-export-port=8080
+ExecStart=$LAB_DIR/venv/bin/ray start --address=$HEAD_IP:$RAY_PORT --resources=$RES_UNIT --metrics-export-port=8080 --block
 ExecStop=$LAB_DIR/venv/bin/ray stop
-Restart=on-failure
+Restart=always
+RestartSec=10
 Environment=RAY_memory_usage_threshold=0.80   # graceful, retryable task kills
 MemoryMax=95%                                  # kernel cgroup hard wall
 [Install]
