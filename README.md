@@ -64,7 +64,8 @@ HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
 | --- | --- | --- |
 | `INSTALL_DOCKER` | 0 (off) | on for workers that run containerized tasks |
 | `INSTALL_GRAFANA` | 0 (off) | on for one box only (serves the dashboards) |
-| `INSTALL_SSH` | 1 (on) | installs + hardens OpenSSH; 0 to skip (see below) |
+| `INSTALL_SSH` | 1 (on) | installs OpenSSH; 0 to skip (see below) |
+| `SSH_KEY_ONLY` | 0 (off) | disable password auth (key-only); off = passwords left alone |
 | `SSH_TAILSCALE_ONLY` | 0 (off) | bind sshd to the Tailscale IP only |
 
 ## Deploy to all workers
@@ -105,10 +106,10 @@ the copied key also flips that box to key-only auth on the next run.
 ## SSH
 
 On by default. Installs `openssh-server` and writes a drop-in at
-`/etc/ssh/sshd_config.d/homelab.conf`. It goes key-only **only if**
-`~/.ssh/authorized_keys` already has a key — otherwise passwords stay on so a
-headless first run can't lock you out (add a key, re-run to harden). On the mac
-it enables Remote Login (needs Full Disk Access, else enable it by hand).
+`/etc/ssh/sshd_config.d/homelab.conf`. It leaves password auth **alone** — it
+never disables it on its own, so a run can't lock you out. Set `SSH_KEY_ONLY=1`
+to explicitly go key-only (`PasswordAuthentication no`). On the mac it enables
+Remote Login (needs Full Disk Access, else enable it by hand).
 
 ## Config and restarts
 

@@ -61,23 +61,20 @@ install_tailscale() {
   echo ">> Run 'sudo tailscale up' once, manually, to authenticate."
 }
 
-# install_ssh - install OpenSSH and write an idempotent drop-in. Goes key-only
-# only if authorized_keys already has a key (else keeps passwords, so a headless
-# first run can't lock you out). SSH_TAILSCALE_ONLY=1 binds to the Tailscale IP.
+# install_ssh - install OpenSSH and write an idempotent drop-in. Leaves password
+# auth alone by default; only disables it when you explicitly ask (SSH_KEY_ONLY=1),
+# so a setup/deploy run can never lock you out. SSH_TAILSCALE_ONLY=1 binds to the
+# Tailscale IP.
 install_ssh() {
   echo "== OpenSSH server (INSTALL_SSH=1; set INSTALL_SSH=0 to skip) =="
   sudo apt-get install -y openssh-server
   local conf=/etc/ssh/sshd_config.d/homelab.conf
-  local keys="$HOME/.ssh/authorized_keys"
-  local harden=0; [[ -s "$keys" ]] && harden=1
   {
     echo "# Managed by homelab scripts/common.sh - edit here and re-run setup."
     echo "PubkeyAuthentication yes"
-    if [[ $harden -eq 1 ]]; then
+    if [[ "${SSH_KEY_ONLY:-0}" == "1" ]]; then   # opt-in only
       echo "PasswordAuthentication no"
       echo "KbdInteractiveAuthentication no"
-    else
-      echo "PasswordAuthentication yes"   # no key yet; keep passwords
     fi
     if [[ "${SSH_TAILSCALE_ONLY:-0}" == "1" ]]; then
       local ts_ip; ts_ip=$(tailscale ip -4 2>/dev/null | head -n1 || true)
@@ -94,9 +91,6 @@ install_ssh() {
   sudo sshd -t || { echo "sshd config test failed; not restarting." >&2; return 1; }
   sudo systemctl enable ssh
   sudo systemctl restart ssh
-  if [[ $harden -eq 0 ]]; then
-    echo ">> Passwords still ON (no key). Key-only: ssh-copy-id $USER@$(hostname), then re-run." >&2
-  fi
 }
 
 # write_service NAME  < unit-file-on-stdin
