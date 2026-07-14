@@ -45,17 +45,22 @@ scrape_configs:
 EOF
 
 echo "== [4/6] systemd services (Ray head + Prometheus) =="
+# --block keeps ray in the foreground so systemd tracks the head's processes and
+# restarts them when one dies; the old Type=forking exited 0 and hid raylet death
+# (GCS kept serving while the head dropped out of its own cluster)
 write_service ray-head <<EOF
 [Unit]
 Description=Ray head node
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 [Service]
-Type=forking
+Type=simple
 User=$USER
-ExecStart=$LAB_DIR/venv/bin/ray start --head --port=$RAY_PORT --dashboard-host=0.0.0.0 --metrics-export-port=8080
+ExecStart=$LAB_DIR/venv/bin/ray start --head --port=$RAY_PORT --dashboard-host=0.0.0.0 --metrics-export-port=8080 --block
 ExecStop=$LAB_DIR/venv/bin/ray stop
-Restart=on-failure
+Restart=always
+RestartSec=10
 Environment=RAY_task_events_max_num_task_in_gcs=10000   # prune GCS task metadata
 [Install]
 WantedBy=multi-user.target

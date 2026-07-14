@@ -98,15 +98,23 @@ if [[ "${INSTALL_SSH:-1}" == "1" ]]; then
   else
     echo ">> Enable by hand: System Settings > General > Sharing > Remote Login." >&2
   fi
-  # harden only if a key exists and sshd_config includes the drop-in dir (Ventura+)
+  # write the drop-in if sshd_config includes the drop-in dir (Ventura+); mirror
+  # the linux path in common.sh - only disable passwords under SSH_KEY_ONLY=1 (and
+  # only if a key exists), so a run can't silently lock you out
   keys="$HOME/.ssh/authorized_keys"
-  if [[ -s "$keys" ]] && grep -q '^Include /etc/ssh/sshd_config.d/' /etc/ssh/sshd_config 2>/dev/null; then
-    printf 'PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n' \
-      | sudo tee /etc/ssh/sshd_config.d/homelab.conf >/dev/null
+  if grep -q '^Include /etc/ssh/sshd_config.d/' /etc/ssh/sshd_config 2>/dev/null; then
+    {
+      echo "# Managed by homelab scripts/setup_worker_mac.sh - edit here and re-run setup."
+      echo "PubkeyAuthentication yes"
+      if [[ "${SSH_KEY_ONLY:-0}" == "1" && -s "$keys" ]]; then   # opt-in only
+        echo "PasswordAuthentication no"
+        echo "KbdInteractiveAuthentication no"
+      fi
+    } | sudo tee /etc/ssh/sshd_config.d/homelab.conf >/dev/null
     sudo launchctl kickstart -k system/com.openssh.sshd 2>/dev/null || true
-    echo ">> Hardened to key-only auth."
+    echo ">> SSH drop-in written (key-only auth: ${SSH_KEY_ONLY:-0})."
   else
-    echo ">> SSH auth left unchanged (add a key to $keys, then re-run to harden)."
+    echo ">> sshd_config has no drop-in Include; SSH auth left unchanged." >&2
   fi
 fi
 
