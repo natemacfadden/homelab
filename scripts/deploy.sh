@@ -15,12 +15,13 @@ source ./scripts/common.sh               # for the fail-loud ERR trap
 # --- manifest (edit me): host | RESOURCES | extra flags | os ----------------
 # Same idea as NODE_TARGETS in setup_head.sh - this list is the source of truth.
 # One row per worker: the SSH host, the Ray tag it advertises, any INSTALL_*
-# flags, and linux|mac (which setup script to run).
+# flags, and linux|mac (which setup script to run). The host may be "user@host"
+# to log in as a specific user; a bare host uses SSH_USER.
 WORKERS=(
   "compute01    | {\"amd\": 1, \"big_memory\": 1} | INSTALL_DOCKER=1 INSTALL_GRAFANA=1 | linux"
   "compute02    | {\"cuda\": 1}                   |                                    | linux"
   "compute03    | {\"amd\": 1, \"small_task\": 1} |                                    | linux"
-  "computemac01 | {\"mac\": 1}                    |                                    | mac"
+  "natemacfadden@computemac01 | {\"mac\": 1}      |                                    | mac"
 )
 SSH_USER="${SSH_USER:-$USER}"            # override if the login differs per box
 # ----------------------------------------------------------------------------
@@ -38,7 +39,8 @@ fail=0
 for row in "${WORKERS[@]}"; do
   IFS='|' read -r host res flags os <<<"$row"
   host=$(trim "$host"); res=$(trim "$res"); flags=$(trim "$flags"); os=$(trim "$os")
-  target="$SSH_USER@$host"
+  # host may be "user@host"; otherwise fall back to SSH_USER.
+  target="$host"; [[ "$host" != *@* ]] && target="$SSH_USER@$host"
   echo "== $host ($os) =="
 
   if [[ "$MODE" == "check" ]]; then
