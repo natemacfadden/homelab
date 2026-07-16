@@ -22,7 +22,9 @@ import os
 import pathlib
 import signal
 import subprocess
+import sys
 import tempfile
+import threading
 import time
 import ray
 
@@ -173,20 +175,99 @@ def review(choice, bundle, model, mem_cap_mb):
 # holds the in-flight task ref so a second Ctrl-C can cancel it
 _current = {"ref": None}
 
+# engine phase markers; the heartbeat surfaces the latest matching line.
+_PHASE_MARKERS = ("review start", "review done", "review FAILED", "detect",
+                  "reviews -", "reconciled", "synthesis", "VERDICT", "flavor ")
+
+
+def _fmt_elapsed(secs):
+    m, s = divmod(int(secs), 60)
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
+
+
+def _review_worker():
+    """(node_id, pid) of the currently-running review task, or None."""
+    try:
+        from ray.util.state import list_tasks
+        rows = list_tasks(filters=[("name", "=", "review"),
+                                   ("state", "=", "RUNNING")],
+                          detail=True, limit=1)
+        if rows:
+            return rows[0].node_id, rows[0].worker_pid
+    except Exception:
+        pass
+    return None
+
+
+def _latest_phase(worker):
+    """Last engine phase line from the worker's log (shortened), or None."""
+    try:
+        from ray.util.state import get_log
+        node_id, pid = worker
+        last = None
+        for line in get_log(node_id=node_id, pid=pid, tail=300):
+            s = line.strip()
+            if any(m in s for m in _PHASE_MARKERS):
+                last = s.split(": ", 1)[-1] if ": " in s else s
+        return last[:60] if last else None
+    except Exception:
+        return None
+
+
+def _heartbeat(name, stopflag):
+    """Live single-line status while a review runs (interactive only). Degrades
+    to elapsed-only if the worker log can't be read."""
+    start = time.time()
+    worker = None
+    phase = "starting"
+    last_poll = 0.0
+    while not stopflag["done"]:
+        now = time.time()
+        if now - last_poll > 5:
+            last_poll = now
+            worker = worker or _review_worker()
+            if worker:
+                phase = _latest_phase(worker) or phase
+        line = (f"[{time.strftime('%H:%M:%S')}] {name} - {phase} - "
+                f"{_fmt_elapsed(now - start)}")
+        sys.stdout.write("\r" + line + " " * max(0, 90 - len(line)))
+        sys.stdout.flush()
+        time.sleep(1.5)
+
 
 def run_once(repo=None):
     """One review: pick (or forced repo) -> bundle -> run on a worker -> file."""
     choice = pick(repo)
-    print(f"chosen: {choice['name']} (flavor {choice.get('flavor') or 'auto'}, "
-          f"profile {choice.get('profile') or 'general'})")
+    interactive = sys.stdout.isatty()
+    if interactive:
+        hdr = (f"{choice['name']}  ({choice.get('flavor') or 'auto'} - "
+               f"{choice.get('profile') or 'general'})")
+        print(f"\n-- reviewing {hdr} " + "-" * max(0, 58 - len(hdr)))
+    else:
+        print(f"chosen: {choice['name']} (flavor {choice.get('flavor') or 'auto'}, "
+              f"profile {choice.get('profile') or 'general'})")
+
     data = bundle_bytes(choice["name"])
     _current["ref"] = review.options(
         resources={WORKER_RESOURCE: 1}
     ).remote(choice, data, MODEL, MEM_CAP_MB)
+
+    stopflag = {"done": False}
+    hb = None
+    if interactive:
+        hb = threading.Thread(target=_heartbeat, args=(choice["name"], stopflag),
+                              daemon=True)
+        hb.start()
     try:
         res = ray.get(_current["ref"])
     finally:
         _current["ref"] = None
+        stopflag["done"] = True
+        if hb:
+            hb.join(timeout=2)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
 
     dest = pathlib.Path(ARCHIVE)
     for rel, content in res["files"].items():

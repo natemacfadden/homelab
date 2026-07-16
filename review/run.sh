@@ -45,12 +45,20 @@ esac
 LOGDIR="$HOME/github/repo-review-out/_cron"
 mkdir -p "$LOGDIR"
 ts="$(date -u +%Y-%m-%dT%H%M%SZ)"
-{
+
+run_review() {
   echo "=== review $ts (args: $*) ==="
   if ! curl -sf -m 5 "$MODEL_URL" >/dev/null; then
     echo "model server not reachable at $MODEL_URL - skipping this run"
-    exit 0
+    return 0
   fi
   [ -f "$VENV/bin/activate" ] && source "$VENV/bin/activate"
   REVIEW_PIDFILE="$PIDFILE" python "$HERE/driver.py" "$@"
-} >"$LOGDIR/$ts.log" 2>&1
+}
+
+# interactive -> live to the terminal (heartbeat); cron/redirected -> log file
+if [ -t 1 ]; then
+  run_review "$@"
+else
+  run_review "$@" >"$LOGDIR/$ts.log" 2>&1
+fi
