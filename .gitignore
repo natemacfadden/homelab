@@ -5,3 +5,6 @@ prometheus-data/
 # Editor / OS cruft
 .DS_Store
 *.swp
+
+# caches
+__pycache__/
