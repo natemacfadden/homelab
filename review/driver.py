@@ -66,8 +66,10 @@ def review(choice, bundle, model, mem_cap_mb):
     """Runs on the worker: clone the bundle, run the adapter under a memory
     watchdog, return the output files. A blown cap kills the review (not the
     box) and is reported, never silently skipped. OS-agnostic (Linux/macOS)."""
+    import glob
     import os
     import pathlib
+    import shutil
     import signal
     import subprocess
     import tempfile
@@ -75,110 +77,120 @@ def review(choice, bundle, model, mem_cap_mb):
     import time
 
     home = os.path.expanduser("~")
-    work = tempfile.mkdtemp(prefix="rr-")
-    bpath = os.path.join(work, "repo.bundle")
-    pathlib.Path(bpath).write_bytes(bundle)
-    repo = os.path.join(work, choice["name"])
-    subprocess.run(["git", "clone", "-q", bpath, repo], check=True)
-
-    out = os.path.join(work, "out")
-    target = f"{repo}:{choice['flavor']}" if choice.get("flavor") else repo
-    args = [target]
-    if choice.get("profile"):
-        args += ["--profile", choice["profile"]]
-    if choice.get("specialization"):
-        args += ["--for", choice["specialization"]]
-    args += ["--out", out, "--stamp", choice["stamp"]]
-
-    # launchd/systemd give a minimal PATH; add opencode + common node locations
-    # for macOS (Homebrew) and Linux so node/opencode resolve either way.
-    env = dict(os.environ)
-    env["PATH"] = ":".join([
-        f"{home}/.opencode/bin", "/opt/homebrew/bin", "/usr/local/bin",
-        "/usr/bin", "/bin", env.get("PATH", ""),
-    ])
-    env["REPO_REVIEW_MODEL"] = model
-    adapter = f"{home}/github/repo-review/adapters/opencode/run.mjs"
-
-    # auto cap = ~90% of total RAM: Linux /proc/meminfo, else macOS sysctl.
-    cap = mem_cap_mb
-    if not cap:
-        total_mb = 0
+    tmproot = tempfile.gettempdir()
+    # sweep stale leftovers a force-kill couldn't clean (this worker reviews one
+    # repo at a time, so an rr-* dir older than an hour is a leftover).
+    now = time.time()
+    for old in glob.glob(os.path.join(tmproot, "rr-*")):
         try:
-            for line in open("/proc/meminfo"):
-                if line.startswith("MemTotal:"):
-                    total_mb = int(line.split()[1]) // 1024
-                    break
-        except Exception:
+            if now - os.path.getmtime(old) > 3600:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
             pass
-        if not total_mb:
-            try:
-                total_mb = int(
-                    subprocess.check_output(["sysctl", "-n", "hw.memsize"])
-                ) // 1048576
-            except Exception:
-                total_mb = 0
-        cap = int(total_mb * 0.9) if total_mb else 0
 
-    def tree_rss_mb(root):
-        try:
-            rows = subprocess.check_output(
-                ["ps", "-Ao", "pid,ppid,rss"], text=True
-            ).splitlines()[1:]
-        except Exception:
-            return 0
-        kids, rss = {}, {}
-        for ln in rows:
-            f = ln.split()
-            if len(f) < 3:
-                continue
-            pid, ppid, r = int(f[0]), int(f[1]), int(f[2])
-            kids.setdefault(ppid, []).append(pid)
-            rss[pid] = r
-        total, stack = 0, [root]
-        while stack:
-            p = stack.pop()
-            total += rss.get(p, 0)
-            stack += kids.get(p, [])
-        return total // 1024
+    work = tempfile.mkdtemp(prefix="rr-")
+    try:
+        bpath = os.path.join(work, "repo.bundle")
+        pathlib.Path(bpath).write_bytes(bundle)
+        repo = os.path.join(work, choice["name"])
+        subprocess.run(["git", "clone", "-q", bpath, repo], check=True)
 
-    proc = subprocess.Popen(
-        ["node", adapter] + args, env=env, start_new_session=True
-    )
-    killed = {"mem": False}
+        out = os.path.join(work, "out")
+        target = f"{repo}:{choice['flavor']}" if choice.get("flavor") else repo
+        args = [target]
+        if choice.get("profile"):
+            args += ["--profile", choice["profile"]]
+        if choice.get("specialization"):
+            args += ["--for", choice["specialization"]]
+        args += ["--out", out, "--stamp", choice["stamp"]]
 
-    def watch():
+        # launchd/systemd give a minimal PATH; add opencode + common node
+        # locations for macOS (Homebrew) and Linux so both resolve.
+        env = dict(os.environ)
+        env["PATH"] = ":".join([
+            f"{home}/.opencode/bin", "/opt/homebrew/bin", "/usr/local/bin",
+            "/usr/bin", "/bin", env.get("PATH", ""),
+        ])
+        env["REPO_REVIEW_MODEL"] = model
+        adapter = f"{home}/github/repo-review/adapters/opencode/run.mjs"
+
+        # auto cap = ~90% of total RAM: Linux /proc/meminfo, else macOS sysctl.
+        cap = mem_cap_mb
         if not cap:
-            return
-        while proc.poll() is None:
-            if tree_rss_mb(proc.pid) > cap:
-                killed["mem"] = True
+            total_mb = 0
+            try:
+                for line in open("/proc/meminfo"):
+                    if line.startswith("MemTotal:"):
+                        total_mb = int(line.split()[1]) // 1024
+                        break
+            except Exception:
+                pass
+            if not total_mb:
                 try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    total_mb = int(
+                        subprocess.check_output(["sysctl", "-n", "hw.memsize"])
+                    ) // 1048576
                 except Exception:
-                    pass
-                break
-            time.sleep(5)
+                    total_mb = 0
+            cap = int(total_mb * 0.9) if total_mb else 0
 
-    threading.Thread(target=watch, daemon=True).start()
-    rc = proc.wait()
+        def tree_rss_mb(root):
+            try:
+                rows = subprocess.check_output(
+                    ["ps", "-Ao", "pid,ppid,rss"], text=True
+                ).splitlines()[1:]
+            except Exception:
+                return 0
+            kids, rss = {}, {}
+            for ln in rows:
+                f = ln.split()
+                if len(f) < 3:
+                    continue
+                pid, ppid, r = int(f[0]), int(f[1]), int(f[2])
+                kids.setdefault(ppid, []).append(pid)
+                rss[pid] = r
+            total, stack = 0, [root]
+            while stack:
+                p = stack.pop()
+                total += rss.get(p, 0)
+                stack += kids.get(p, [])
+            return total // 1024
 
-    files = {}
-    od = pathlib.Path(out)
-    if od.exists():
-        for p in od.rglob("*"):
-            if p.is_file():
-                files[str(p.relative_to(out))] = p.read_bytes()
-    return {"rc": rc, "killed_mem": killed["mem"], "cap_mb": cap, "files": files}
+        proc = subprocess.Popen(
+            ["node", adapter] + args, env=env, start_new_session=True
+        )
+        killed = {"mem": False}
+
+        def watch():
+            if not cap:
+                return
+            while proc.poll() is None:
+                if tree_rss_mb(proc.pid) > cap:
+                    killed["mem"] = True
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    except Exception:
+                        pass
+                    break
+                time.sleep(5)
+
+        threading.Thread(target=watch, daemon=True).start()
+        rc = proc.wait()
+
+        files = {}
+        od = pathlib.Path(out)
+        if od.exists():
+            for p in od.rglob("*"):
+                if p.is_file():
+                    files[str(p.relative_to(out))] = p.read_bytes()
+        return {"rc": rc, "killed_mem": killed["mem"], "cap_mb": cap,
+                "files": files}
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 # holds the in-flight task ref so a second Ctrl-C can cancel it
 _current = {"ref": None}
-
-# engine phase markers; the heartbeat surfaces the latest matching line.
-_PHASE_MARKERS = ("review start", "review done", "review FAILED", "detect",
-                  "reviews -", "reconciled", "synthesis", "VERDICT", "flavor ")
-
 
 def _fmt_elapsed(secs):
     m, s = divmod(int(secs), 60)
@@ -201,15 +213,18 @@ def _review_worker():
 
 
 def _latest_phase(worker):
-    """Last engine phase line from the worker's log (shortened), or None."""
+    """Last engine phase line from the worker's log (shortened), or None.
+    Matches only the engine's '[n/m] <path>: <phase>' progress lines."""
     try:
+        import re
         from ray.util.state import get_log
         node_id, pid = worker
+        pat = re.compile(r'^\[\d+/\d+\]\s+[^:]+:\s+(.*)$')
         last = None
-        for line in get_log(node_id=node_id, pid=pid, tail=300):
-            s = line.strip()
-            if any(m in s for m in _PHASE_MARKERS):
-                last = s.split(": ", 1)[-1] if ": " in s else s
+        for line in get_log(node_id=node_id, pid=pid, tail=400):
+            m = pat.match(line.strip())
+            if m:
+                last = m.group(1)
         return last[:60] if last else None
     except Exception:
         return None
