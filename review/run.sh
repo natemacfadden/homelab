@@ -46,14 +46,18 @@ LOGDIR="$HOME/github/repo-review-out/_cron"
 mkdir -p "$LOGDIR"
 ts="$(date -u +%Y-%m-%dT%H%M%SZ)"
 
+LIVELOG="$LOGDIR/live.log"   # trim mirror of the run (no heartbeat frames)
+
 run_review() {
   echo "=== review $ts (args: $*) ==="
+  echo "live log: $LIVELOG"
   if ! curl -sf -m 5 "$MODEL_URL" >/dev/null; then
     echo "model server not reachable at $MODEL_URL - skipping this run"
     return 0
   fi
   [ -f "$VENV/bin/activate" ] && source "$VENV/bin/activate"
-  REVIEW_PIDFILE="$PIDFILE" python "$HERE/driver.py" "$@"
+  REVIEW_PIDFILE="$PIDFILE" REVIEW_LOG="$LIVELOG" \
+    python "$HERE/driver.py" "$@"
 }
 
 # interactive -> live to the terminal (heartbeat); cron/redirected -> log file

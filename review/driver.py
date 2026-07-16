@@ -35,6 +35,7 @@ SCHED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule.mjs")
 MODEL = os.environ.get("REPO_REVIEW_MODEL", "ds4/deepseek-v4-flash")
 WORKER_RESOURCE = os.environ.get("REVIEW_WORKER_RESOURCE", "mac")
 MEM_CAP_MB = int(os.environ.get("REVIEW_MEM_CAP_MB", "0"))
+LOGFILE = os.environ.get("REVIEW_LOG")  # trim mirror of output (no heartbeat)
 
 
 def pick(repo=None):
@@ -198,57 +199,49 @@ def _fmt_elapsed(secs):
     return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
 
 
-def _review_worker():
-    """(node_id, pid) of the currently-running review task, or None."""
-    try:
-        from ray.util.state import list_tasks
-        rows = list_tasks(filters=[("name", "=", "review"),
-                                   ("state", "=", "RUNNING")],
-                          detail=True, limit=1)
-        if rows:
-            return rows[0].node_id, rows[0].worker_pid
-    except Exception:
-        pass
-    return None
+class _Tee:
+    """Mirror stdout to a logfile, but drop heartbeat frames (carriage-return
+    writes with no newline) so the file stays trim - only real event lines land
+    there. isatty() delegates to the terminal so the live heartbeat still runs.
+    Opened 'w' so each run starts a fresh, bounded file."""
+    def __init__(self, real, path):
+        self._real = real
+        self._log = open(path, "w", buffering=1)
 
+    def write(self, s):
+        self._real.write(s)
+        if s and "\r" not in s and s.strip():
+            self._log.write(s if s.endswith("\n") else s + "\n")
 
-def _latest_phase(worker):
-    """Last engine phase line from the worker's log (shortened), or None.
-    Matches only the engine's '[n/m] <path>: <phase>' progress lines."""
-    try:
-        import re
-        from ray.util.state import get_log
-        node_id, pid = worker
-        pat = re.compile(r'^\[\d+/\d+\]\s+[^:]+:\s+(.*)$')
-        last = None
-        for line in get_log(node_id=node_id, pid=pid, tail=400):
-            m = pat.match(line.strip())
-            if m:
-                last = m.group(1)
-        return last[:60] if last else None
-    except Exception:
-        return None
+    def flush(self):
+        self._real.flush()
+        self._log.flush()
+
+    def isatty(self):
+        return self._real.isatty()
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
 
 
 def _heartbeat(name, stopflag):
-    """Live single-line status while a review runs (interactive only). Degrades
-    to elapsed-only if the worker log can't be read."""
+    """Simple in-place liveness line (interactive only): repo + elapsed. No
+    remote-log polling - for the current lens, use watch.sh."""
     start = time.time()
-    worker = None
-    phase = "starting"
-    last_poll = 0.0
     while not stopflag["done"]:
-        now = time.time()
-        if now - last_poll > 5:
-            last_poll = now
-            worker = worker or _review_worker()
-            if worker:
-                phase = _latest_phase(worker) or phase
-        line = (f"[{time.strftime('%H:%M:%S')}] {name} - {phase} - "
-                f"{_fmt_elapsed(now - start)}")
-        sys.stdout.write("\r" + line + " " * max(0, 90 - len(line)))
+        line = (f"[{time.strftime('%H:%M:%S')}] {name} - reviewing - "
+                f"{_fmt_elapsed(time.time() - start)}")
+        # Keep it to ONE line: truncate to just under the pane width so it can
+        # never wrap (a wrapped line makes \r rewind only the last row, which is
+        # what turns the heartbeat into scrolling new lines). \r returns to col
+        # 0, \x1b[K erases the old row, then we write the (short) line.
+        try:
+            width = os.get_terminal_size(sys.stdout.fileno()).columns
+        except OSError:
+            width = 80
+        sys.stdout.write("\r\x1b[K" + line[:max(1, width - 1)])
         sys.stdout.flush()
-        time.sleep(1.5)
+        time.sleep(1.0)
 
 
 def run_once(repo=None):
@@ -300,6 +293,14 @@ def run_once(repo=None):
 
 
 def main():
+    # mirror our output to a trim logfile (heartbeat frames excluded) so the
+    # run can be watched from elsewhere without bloating the file.
+    if LOGFILE:
+        try:
+            sys.stdout = _Tee(sys.stdout, LOGFILE)
+        except OSError:
+            pass
+
     ap = argparse.ArgumentParser(description="Distributed repo-review driver.")
     ap.add_argument("repo", nargs="?",
                     help="mode 1: review this specific repo once")
@@ -321,7 +322,10 @@ def main():
         except Exception:
             pass
 
-    ray.init(address=os.environ.get("RAY_ADDRESS", "auto"))
+    # log_to_driver=False: keep worker stdout ON the worker (reachable via
+    # watch.sh / ray logs) instead of streaming it into our terminal, where it
+    # would interleave with and scroll away the in-place heartbeat line.
+    ray.init(address=os.environ.get("RAY_ADDRESS", "auto"), log_to_driver=False)
 
     is_loop = args.loop is not None
     stop = {"n": 0}
