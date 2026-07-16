@@ -214,34 +214,51 @@ def main():
                     help="seconds to wait between cycles in --loop")
     args = ap.parse_args()
 
+    # PID file so `run.sh --stop` can signal us (any mode).
+    pidfile = os.environ.get("REVIEW_PIDFILE")
+    if pidfile:
+        try:
+            pathlib.Path(pidfile).parent.mkdir(parents=True, exist_ok=True)
+            pathlib.Path(pidfile).write_text(str(os.getpid()))
+            import atexit
+            atexit.register(lambda: pathlib.Path(pidfile).unlink(missing_ok=True))
+        except Exception:
+            pass
+
     ray.init(address=os.environ.get("RAY_ADDRESS", "auto"))
 
-    if args.loop is None:
-        run_once(args.repo)
-        return
-
+    is_loop = args.loop is not None
     stop = {"n": 0}
 
+    # In --loop the first signal finishes the current review then stops; a
+    # second signal (or any signal in single-run mode) cancels it now.
     def handle(signum, frame):
-        stop["n"] += 1
-        if stop["n"] == 1:
-            print("\n>> stop requested - finishing the current review, then "
-                  "exiting. (Ctrl-C again to cancel it now.)", flush=True)
-        else:
-            print("\n>> hard stop - cancelling the running review.", flush=True)
-            if _current["ref"] is not None:
-                ray.cancel(_current["ref"], force=True)
-            raise KeyboardInterrupt
+        if is_loop and stop["n"] == 0:
+            stop["n"] = 1
+            print("\n>> stop requested - finishing current review, then "
+                  "exiting. (signal again to cancel now.)", flush=True)
+            return
+        print("\n>> cancelling the running review.", flush=True)
+        if _current["ref"] is not None:
+            ray.cancel(_current["ref"], force=True)
+        raise KeyboardInterrupt
 
     signal.signal(signal.SIGINT, handle)
     signal.signal(signal.SIGTERM, handle)
+
+    if not is_loop:
+        try:
+            run_once(args.repo)
+        except KeyboardInterrupt:
+            print("review cancelled.")
+        return
 
     pid = os.getpid()
     bar = "=" * 64
     print(bar)
     print("LOOP MODE - reviewing repos continuously, stalest-first.")
     print("  each cycle reviews the most-due repo; freshly reviewed ones sink.")
-    print(f"  PID {pid}    stop: Ctrl-C   (or from elsewhere: kill {pid})")
+    print(f"  PID {pid}    stop: run.sh --stop  (or Ctrl-C / kill {pid})")
     if args.loop and args.loop > 0:
         print(f"  capped at {args.loop} cycle(s)")
     print(bar, flush=True)
@@ -264,7 +281,7 @@ def main():
         if stop["n"]:
             break
         if args.interval and stop["n"] == 0:
-            print(f"[cycle {n}] sleeping {args.interval}s (Ctrl-C to stop)",
+            print(f"[cycle {n}] sleeping {args.interval}s (run.sh --stop to stop)",
                   flush=True)
             time.sleep(args.interval)
 
