@@ -36,6 +36,10 @@ MODEL = os.environ.get("REPO_REVIEW_MODEL", "ds4/deepseek-v4-flash")
 WORKER_RESOURCE = os.environ.get("REVIEW_WORKER_RESOURCE", "mac")
 MEM_CAP_MB = int(os.environ.get("REVIEW_MEM_CAP_MB", "0"))
 LOGFILE = os.environ.get("REVIEW_LOG")  # trim mirror of output (no heartbeat)
+# opt-in: on a worker DEDICATED to reviews, kill any leftover reviewer process
+# at each review start (catches orphans a worker-crash left). OFF by default -
+# unsafe on a shared box, where it could kill another user's opencode.
+SWEEP_ORPHANS = os.environ.get("REVIEW_KILL_ORPHANS", "") == "1"
 
 
 def pick(repo=None):
@@ -63,7 +67,7 @@ def bundle_bytes(name):
 
 
 @ray.remote
-def review(choice, bundle, model, mem_cap_mb):
+def review(choice, bundle, model, mem_cap_mb, sweep_orphans):
     """Runs on the worker: clone the bundle, run the adapter under a memory
     watchdog, return the output files. A blown cap kills the review (not the
     box) and is reported, never silently skipped. OS-agnostic (Linux/macOS)."""
@@ -89,7 +93,28 @@ def review(choice, bundle, model, mem_cap_mb):
         except OSError:
             pass
 
+    # opt-in backstop (REVIEW_KILL_ORPHANS=1, dedicated workers only): kill any
+    # reviewer a prior worker-crash orphaned. OFF by default - on a shared box
+    # this could kill another user's opencode. The on-exit cleanup below is the
+    # safe, always-on path; this only covers a SIGKILL that skipped it.
+    if sweep_orphans:
+        try:
+            ps = subprocess.check_output(["ps", "axo", "pid,command"], text=True)
+            for line in ps.splitlines()[1:]:
+                parts = line.split(None, 1)
+                if len(parts) < 2:
+                    continue
+                pid, cmd = int(parts[0]), parts[1]
+                if "opencode run" in cmd or "adapters/opencode/run.mjs" in cmd:
+                    try:
+                        os.killpg(os.getpgid(pid), signal.SIGKILL)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+
     work = tempfile.mkdtemp(prefix="rr-")
+    proc = None
     try:
         bpath = os.path.join(work, "repo.bundle")
         pathlib.Path(bpath).write_bytes(bundle)
@@ -187,6 +212,13 @@ def review(choice, bundle, model, mem_cap_mb):
         return {"rc": rc, "killed_mem": killed["mem"], "cap_mb": cap,
                 "files": files}
     finally:
+        # if the reviewer is still alive here (e.g. the task was cancelled
+        # mid-run), kill its whole process group so opencode is never orphaned.
+        if proc is not None and proc.poll() is None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except OSError:
+                pass
         shutil.rmtree(work, ignore_errors=True)
 
 
@@ -259,7 +291,7 @@ def run_once(repo=None):
     data = bundle_bytes(choice["name"])
     _current["ref"] = review.options(
         resources={WORKER_RESOURCE: 1}
-    ).remote(choice, data, MODEL, MEM_CAP_MB)
+    ).remote(choice, data, MODEL, MEM_CAP_MB, SWEEP_ORPHANS)
 
     stopflag = {"done": False}
     hb = None
@@ -340,7 +372,9 @@ def main():
             return
         print("\n>> cancelling the running review.", flush=True)
         if _current["ref"] is not None:
-            ray.cancel(_current["ref"], force=True)
+            # force=False -> the task gets KeyboardInterrupt and its finally runs
+            # (killing the opencode subtree); a force-kill would orphan it.
+            ray.cancel(_current["ref"], force=False)
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGINT, handle)
