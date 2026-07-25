@@ -10,10 +10,10 @@ in `repo-review-out/<repo>/<stamp>/` — one doc per lens, plus `MEMO.md` and
 
 ## Run
 
-`./review` is the only entry point. Run it on the box with the repos, the
-manifest, the `raylab` venv, and node (that box also needs to reach the model
-server, and at least one worker must be tagged as a reviewer — see
-[Setup](#setup)).
+`./review` is the only entry point (or `./lab review …` from the repo root — same
+thing). Run it on the box with the repos, the manifest, the `raylab` venv, and
+node (that box also needs to reach the model server, and at least one worker must
+be tagged as a reviewer — see [Setup](#setup)).
 
 ```
 ./review                       one review now, weighted pick
@@ -47,13 +47,12 @@ on disk but unlisted), exiting non-zero if any warning fires.
 ## Setup
 
 The worker does the work, so it needs the reviewer toolchain: node, opencode,
-coreutils, and a clone of repo-review. Provision one with
-[`../scripts/setup_reviewer.sh`](../scripts/setup_reviewer.sh) (macOS or
-Debian/Ubuntu, idempotent), then tag it in the cluster with the resource
+coreutils, and a clone of repo-review. Provision it from the repo root (macOS or
+Debian/Ubuntu, idempotent), then tag the box in the cluster with the resource
 `./review` targets — `{"mac": 1}` by default:
 
 ```bash
-REVIEW_MODEL_URL=http://compute01:8000/v1 bash scripts/setup_reviewer.sh
+REVIEW_MODEL_URL=http://compute01:8000/v1 ./lab setup --reviewer
 ```
 
 `driver.py` bundles the chosen repo (`git bundle`, full history), ships it to

@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 #
-# claude_local.sh - run Claude Code against the big box's local LLM server
-# instead of Anthropic's API. Extra args pass through to claude.
+# run Claude Code against the big box's local LLM server instead of Anthropic's
+# API. Starts the model server for the session and stops it on exit. Extra args
+# pass through to claude.
+#
+#   ./lab claude
+#   ./lab claude -p "explain this repo"
 #
 # Default backend is ds4-server (DeepSeek V4 Flash via its native Anthropic
 # /v1/messages endpoint). The old llama.cpp backend is still available:
-#   SERVICE=llama-server LLM_PORT=8081 MODEL=qwen3.6-35b-q8-xl bash scripts/claude_local.sh
 #
-# Usage (from any box):
-#   bash scripts/claude_local.sh
-#   bash scripts/claude_local.sh -p "explain this repo"
+#   SERVICE=llama-server LLM_PORT=8081 MODEL=qwen3.6-35b-q8-xl ./lab claude
+#
+# env: LLM_HOST (default compute01), SERVICE, LLM_PORT, MODEL, CTX,
+#      COMPACT_PCT (compact at this % of CTX; default 85)
 #
 set -Eeuo pipefail
 

@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
 #
-# setup_worker_mac.sh - join a macOS worker (e.g. the MacBook) to the Ray cluster
-# macOS has no systemd or apt, so this uses uv for the pinned Python and launchd
-# (the macOS service manager) to keep the worker running and restart it on boot
+# join THIS macOS box (e.g. the MacBook) to the Ray cluster as a worker. macOS
+# has no systemd or apt, so this uses uv for the pinned Python and launchd (the
+# macOS service manager) to keep the worker running and restart it on boot.
 #
-# prerequisite: install the Tailscale app (same account) and sign in, so the head
-# node's name resolves
+#   HEAD_IP=head01 RESOURCES='{"mac": 1}' ./lab setup --worker-mac
 #
-#   HEAD_IP=head01 RESOURCES='{"mac": 1}' bash scripts/setup_worker_mac.sh
+# prerequisite: install the Tailscale app (same account) and sign in, so the
+# head node's name resolves.
+#
+# env:
+#   HEAD_IP      required - the head's Tailscale name/IP
+#   RESOURCES    Ray tag this box advertises; default {"mac": 1}
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./common.sh
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This script is for macOS. On Linux use scripts/setup_worker.sh." >&2
+  echo "This role is for macOS. On Linux use: ./lab setup --worker" >&2
   exit 1
 fi
 if [[ -z "${HEAD_IP:-}" ]]; then
-  echo "Set HEAD_IP, e.g.: HEAD_IP=head01 RESOURCES='{\"mac\": 1}' bash scripts/setup_worker_mac.sh" >&2
+  echo "Set HEAD_IP, e.g.: HEAD_IP=head01 RESOURCES='{\"mac\": 1}' ./lab setup --worker-mac" >&2
   exit 1
 fi
 RESOURCES="${RESOURCES:-}"

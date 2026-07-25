@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Quick git sync report for every repo under a root (default ~/github).
-# Fetches each remote first (skip with --no-fetch), then flags dirty working
-# trees and ahead/behind vs upstream.
-#   repos-status.sh [--no-fetch] [root]
+# quick git sync report for every repo under a root (default ~/github): fetches
+# each remote first, then flags dirty working trees and ahead/behind vs upstream.
+#
+#   ./lab repos                    every repo under ~/github
+#   ./lab repos --no-fetch         skip the fetch (fast, may be stale)
+#   ./lab repos /path/to/root      a different root
 set -uo pipefail
 
 fetch=1

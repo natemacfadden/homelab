@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# Provision a Ray worker to RUN repo reviews (not just join the cluster):
+# add the reviewer toolchain to THIS box, so a worker can RUN repo reviews (not
+# just join the cluster):
 #   - node + git + coreutils (for `timeout`) + modern bash (for `mapfile`)
 #   - opencode, pointed at the ds4 model
 #   - a clone of repo-review (the engine + opencode adapter)
 # OS-agnostic (macOS via Homebrew, Debian/Ubuntu via apt). Idempotent.
 #
-#   REVIEW_MODEL_URL=http://compute01:8000/v1 bash scripts/setup_reviewer.sh
+#   REVIEW_MODEL_URL=http://compute01:8000/v1 ./lab setup --reviewer
 #
-# REVIEW_MODEL_URL is the model's OpenAI-compatible base URL (ending in /v1) -
-# the same value review/ uses to health-check the server before each run.
-# Deploy from head like the other setup_*.sh (tar the repo over, run this).
+# env:
+#   REVIEW_MODEL_URL  the model's OpenAI-compatible base URL (ending in /v1) -
+#                     the same value review/ health-checks before each run
+#   RR_PROXY_PORT     local opencode -> ds4 proxy port; default 8010
+#
+# Run it on the worker (push the repo there first with `./lab deploy`).
 # Note: repo-review is private, so this box needs GitHub auth - `gh auth login`
 # (preferred) or git credentials/SSH for the https clone fallback.
 set -Eeuo pipefail

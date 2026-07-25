@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
-# common.sh - shared helpers for the setup_*.sh scripts
-# sourced, not run directly; callers must `set -Eeuo pipefail` first so the ERR
-# trap below is inherited by functions and fires on any failed command
+# common.sh - shared helpers for the setup_*.sh implementations behind
+# `./lab setup`. Sourced, not run directly; callers must `set -Eeuo pipefail`
+# first so the ERR trap below is inherited by functions and fires on any
+# failed command.
 
 # fail loudly: print where we died and what died, instead of exiting silently
 trap 'rc=$?; echo "ERROR (exit $rc) at ${BASH_SOURCE[0]}:$LINENO: $BASH_COMMAND" >&2' ERR
@@ -20,7 +21,7 @@ apt_get() { sudo apt-get -o DPkg::Lock::Timeout="${APT_LOCK_TIMEOUT:-300}" "$@";
 # refuse root, confirm sudo, set $ARCH (amd64/arm64)
 preflight() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "This script targets Linux (systemd/apt). On macOS use: bash scripts/setup_worker_mac.sh" >&2
+    echo "This role targets Linux (systemd/apt). On macOS use: ./lab setup --worker-mac" >&2
     exit 1
   fi
   if [[ ${EUID} -eq 0 ]]; then
@@ -117,5 +118,5 @@ run_healthcheck() {
   echo "== Health check =="
   sleep 5   # let (re)started services answer their ports
   bash "$(dirname "${BASH_SOURCE[0]}")/healthcheck.sh" || \
-    echo "(some checks failed; services may still be starting - re-run: bash scripts/healthcheck.sh)"
+    echo "(some checks failed; services may still be starting - re-run: ./lab check)"
 }

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# rename.sh - rename this machine (OS hostname + Tailscale name) and restart Ray
-# so it picks up the new name; works on Linux (hostnamectl/systemd) and macOS
-# (scutil/launchd), run on the box you're renaming:
-#   bash scripts/rename.sh head01
+# rename THIS machine (OS hostname + Tailscale name) and restart Ray so it picks
+# up the new name; works on Linux (hostnamectl/systemd) and macOS
+# (scutil/launchd). Run it on the box you're renaming:
+#
+#   ./lab rename head01
 #
 # it only renames the machine you run it on; references to its old name on other
 # machines still need updating by hand (see the reminder printed at the end)
@@ -14,7 +15,7 @@ source ./common.sh   # for the fail-loud ERR trap
 
 NEW=${1:-}
 if [[ -z "$NEW" ]]; then
-  echo "Usage: bash scripts/rename.sh <new-name>   (e.g. head01, compute01)" >&2
+  echo "Usage: ./lab rename <new-name>   (e.g. head01, compute01)" >&2
   exit 1
 fi
 if ! [[ "$NEW" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
@@ -71,4 +72,4 @@ fi
 echo
 echo "DONE. '$OLD' is now '$NEW'."
 echo "Update OLD-name references on OTHER machines: worker HEAD_IP=$NEW, and"
-echo "NODE_TARGETS in setup_head.sh (then re-run it)."
+echo "NODE_TARGETS in scripts/setup_head.sh (then re-run ./lab setup --head)."

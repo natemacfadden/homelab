@@ -25,7 +25,9 @@ MODEL_URL="${REVIEW_MODEL_URL:-http://127.0.0.1:8000/v1}"
 VENV="${RAYLAB_VENV:-$HOME/raylab/venv}"
 CRON_TAG="# homelab review nightly"
 
-usage() { sed -n '5,14p' "$0" | cut -c3-; }
+# The command block above IS the usage; rewrite the prefix so the help shows how
+# you actually invoked this (./review, or ./lab review).
+usage() { sed -n '5,14p' "$0" | cut -c3- | sed "s|\./review|${REVIEW_AS:-./review}|"; }
 die() { echo "$*" >&2; exit 1; }
 
 # Ray lives in the raylab venv; both `run` and `watch` need it on PATH.

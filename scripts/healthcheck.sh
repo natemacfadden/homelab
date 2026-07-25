@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 #
-# healthcheck.sh - verify a node's homelab services are up; run it on the node
+# verify THIS node's homelab services are up:
+#
+#   ./lab check
+#
 # auto-detects head/worker (systemd) or macOS worker (launchd), exits non-zero if
 # any check fails (usable from cron or CI), and confirms the node actually joined
 # the cluster, not just that its service is running
@@ -167,9 +170,9 @@ fi
 
 echo
 if [[ $ran -eq 0 ]]; then
-  script=scripts/setup_worker.sh
-  [[ "$(uname -s)" == "Darwin" ]] && script=scripts/setup_worker_mac.sh
-  echo "No homelab services found on this node (run $script first)." >&2
+  role=--worker
+  [[ "$(uname -s)" == "Darwin" ]] && role=--worker-mac
+  echo "No homelab services found on this node (run ./lab setup $role first)." >&2
   exit 1
 fi
 if [[ $fail -eq 0 ]]; then echo "All checks passed."; else echo "Some checks FAILED." >&2; fi

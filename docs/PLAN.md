@@ -1,6 +1,7 @@
 # Home Lab Plan
 
-Heterogeneous ML/AI cluster. Setup scripts: setup_head.sh and setup_worker.sh.
+Heterogeneous ML/AI cluster. Provisioned with `./lab setup --head` and
+`./lab setup --worker` (see the [README](../README.md)).
 
 ## 1. Overview
 
@@ -27,7 +28,7 @@ protection, and containerized tasks.
 
 ## 3. Head node vs worker nodes
 
-| | Head (setup_head.sh) | Workers (setup_worker.sh) |
+| | Head (`--head`) | Workers (`--worker`) |
 |---|---|---|
 | Ray | `ray start --head --port=6379 --dashboard-host=0.0.0.0` via systemd. A GCS hygiene env var prunes finished-task metadata; GCS memory grows with task history, so a restart between batches is the fallback. | `ray start --address=HEAD_IP:6379 --resources='{"cuda": 1}'` via systemd. Runs as your normal user, no sudo or SSH access; the worker opens a persistent outbound connection and the head pushes tasks down it. |
 | Monitoring | Prometheus server, scrapes Ray's service-discovery file and every node_exporter. MemoryMax=1G cap. | node_exporter only. Grafana on ws1 (INSTALL_GRAFANA=1), pointed at the head's Prometheus on :9090. The server can live anywhere; browsers do the rendering. |
@@ -66,10 +67,10 @@ driver, so submit long-running jobs from the head inside tmux.
 ## 6. Setup order
 
 1. Install Debian on the Chromebook, set the hostname, enable SSH.
-2. Run setup_head.sh; open the dashboard on :8265 from another browser.
-3. Run setup_worker.sh per box with the correct HEAD_IP and tag; run a trivial
+2. `./lab setup --head`; open the dashboard on :8265 from another browser.
+3. `./lab setup --worker` per box with the correct HEAD_IP and tag; run a trivial
    test task on each.
-4. Set up llama.cpp (Vulkan) on the big box; hit the API from ws1.
+4. `./lab setup --llm` on the big box (llama.cpp, Vulkan); hit the API from ws1.
 5. Wire up the headless trawler script and containerized trawler tasks.
 6. Add Grafana on ws1 and point it at the Prometheus data source.
 7. Run `tailscale up` on every box.

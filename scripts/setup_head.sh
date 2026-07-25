@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 #
-# setup_head.sh - home lab head node (always-on Debian box)
-# installs Ray head, Prometheus, and a nightly cron stub, and keeps the box awake
-# with the lid closed; run as your normal user with sudo rights:
-#   bash scripts/setup_head.sh
-# idempotent: safe to re-run (re-running restarts ray-head and prometheus)
+# provision THIS box as the head node (always-on Debian box): Ray head,
+# Prometheus, a nightly cron stub, and lid-close/sleep disabled. Run as your
+# normal user with sudo rights:
+#
+#   ./lab setup --head
+#
+# Prometheus scrape targets are the NODE_TARGETS array below - edit and re-run.
+# Prints the address to use as HEAD_IP on the workers, and saves it to ~/ip.txt.
+# Idempotent: re-running restarts ray-head and prometheus.
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 #
-# setup_llm.sh - llama.cpp server on the big box (Strix Halo, Vulkan)
+# provision THIS box (the big one: Strix Halo, Vulkan) as a llama.cpp server:
 # downloads a pinned prebuilt Vulkan release, generates an API key once, and
-# installs a systemd service serving an OpenAI-compatible API on the network
+# installs a systemd service serving an OpenAI-compatible API on the network.
 #
-# usage (MODEL optional; defaults to the newest .gguf under ~/models):
-#   bash scripts/setup_llm.sh
-#   MODEL=~/models/foo.gguf LLM_PORT=8081 bash scripts/setup_llm.sh
-# idempotent: safe to re-run; re-run with a different MODEL to swap models
+#   ./lab setup --llm
+#   MODEL=~/models/foo.gguf LLM_PORT=8081 ./lab setup --llm
+#
+# env:
+#   MODEL      .gguf to serve; default the newest under ~/models
+#   LLM_PORT   default 8081 (8080 is Ray's metrics exporter)
+#   CTX_SIZE   context window; default 32768
+# idempotent: re-run with a different MODEL to swap models
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -102,4 +106,4 @@ echo "
 Done. From any box on the tailnet/LAN:
   OPENAI_BASE_URL=http://$(hostname):$LLM_PORT/v1
   OPENAI_API_KEY=\$(cat $KEY_FILE)   # or copy it: $KEY_FILE
-Swap models:  MODEL=/path/to/other.gguf bash scripts/setup_llm.sh"
+Swap models:  MODEL=/path/to/other.gguf ./lab setup --llm"

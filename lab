@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# The homelab's one entry point. Every verb below dispatches to an
+# implementation in scripts/ (or review/) - you should never need to call those
+# directly. Run `./lab` for the menu, `./lab <verb> --help` for detail.
+set -Eeuo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+S="$HERE/scripts"
+
+menu() {
+  cat <<'EOF'
+homelab - five-node Ray cluster: provision, verify, use.
+
+PROVISION (run on the box itself; needs sudo; idempotent)
+  ./lab setup --head          Ray head + Prometheus + cron
+  ./lab setup --worker        Ray worker + node_exporter   [HEAD_IP=... RESOURCES=...]
+  ./lab setup --worker-mac    macOS worker (uv + launchd)  [HEAD_IP=... RESOURCES=...]
+  ./lab setup --llm           llama.cpp server (big box)
+  ./lab setup --reviewer      reviewer toolchain on a worker
+
+FLEET (run from the head or your laptop)
+  ./lab deploy                push this repo + run setup on every worker
+  ./lab deploy --check        healthcheck each worker instead
+
+THIS BOX
+  ./lab check                 verify services, and that it joined the cluster
+  ./lab rename <name>         hostname + Tailscale name + restart Ray
+
+USE THE CLUSTER
+  ./lab claude [args]         Claude Code against the local model
+  ./lab ds4                   ds4-server in the foreground (big box)
+  ./lab repos                 git sync report over ~/github
+  ./lab review ...            repo reviews (./lab review help)
+
+./lab <verb> --help for detail.
+EOF
+}
+
+setup_usage() {
+  cat <<'EOF'
+./lab setup needs a role - it provisions THIS box for one job:
+
+  --head          Ray head + Prometheus + always-on + nightly cron stub
+  --worker        Ray worker + node_exporter (+ optional Docker/Grafana)
+                  needs HEAD_IP; RESOURCES is the Ray tag this box advertises
+  --worker-mac    the same for macOS (uv + launchd, no systemd); needs HEAD_IP
+  --llm           llama.cpp server, OpenAI-compatible API on :8081
+  --reviewer      node + opencode + repo-review, so a worker can run reviews
+
+e.g.  ./lab setup --head
+      HEAD_IP=head01 RESOURCES='{"cuda": 1}' INSTALL_DOCKER=1 ./lab setup --worker
+      HEAD_IP=head01 RESOURCES='{"mac": 1}' ./lab setup --worker-mac
+
+Every role is idempotent - re-run to apply a config change. Flags and env vars
+per role: ./lab setup --<role> --help
+EOF
+}
+
+# A script's leading comment block IS its help - print that rather than
+# duplicating it here, so the two can't drift.
+show_doc() {
+  sed -n '2,/^[^#]/p' "$1" | grep '^#' | cut -c2- | sed 's/^ //' \
+    | sed '/./,$!d'   # drop the leading blank from a bare "#" line
+}
+
+wants_help() {
+  for a in "$@"; do [[ "$a" == "--help" || "$a" == "-h" ]] && return 0; done
+  return 1
+}
+
+# dispatch <script> [args...] - run it, or print its doc if asked for help
+dispatch() {
+  local f="$1"; shift
+  if wants_help "$@"; then show_doc "$f"; else bash "$f" "$@"; fi
+}
+
+cmd_setup() {
+  local role="${1:-}"
+  [[ -z "$role" ]] && { setup_usage; exit 1; }
+  shift
+  local script
+  case "$role" in
+    --head) script="$S/setup_head.sh" ;;
+    --worker) script="$S/setup_worker.sh" ;;
+    --worker-mac | --workermac) script="$S/setup_worker_mac.sh" ;;
+    --llm) script="$S/setup_llm.sh" ;;
+    --reviewer) script="$S/setup_reviewer.sh" ;;
+    --help | -h) setup_usage; exit 0 ;;
+    *) echo "unknown role '$role'" >&2; echo >&2; setup_usage >&2; exit 1 ;;
+  esac
+  dispatch "$script" "$@"
+}
+
+cmd_ds4() {
+  # Same flags as the ds4-server systemd unit: a bare ./ds4-server would default
+  # to a 32k context. Stop the service first, or the port clashes.
+  if wants_help "$@"; then
+    cat <<'EOF'
+./lab ds4 [args...]   run ds4-server in the FOREGROUND on the big box
+
+Uses the same flags as the ds4-server systemd unit (131072 context, disk KV
+cache) - a bare ./ds4-server would default to 32k. Stop the service first:
+
+  sudo systemctl stop ds4-server
+
+Extra args pass through to ds4-server.
+EOF
+    return 0
+  fi
+  exec "$HOME/github/ds4/ds4-server" \
+    -m "$HOME/github/ds4/ds4flash.gguf" \
+    --host 0.0.0.0 --port 8000 \
+    --ctx 131072 \
+    --kv-disk-dir "$HOME/.ds4/kv-disk" --kv-disk-space-mb 16384 \
+    "$@"
+}
+
+# dispatch: verb -> implementation. --help on any verb prints that script's doc.
+verb="${1:-}"
+[[ -n "$verb" ]] && shift
+case "$verb" in
+  setup) cmd_setup "$@" ;;
+  deploy) dispatch "$S/deploy.sh" "$@" ;;
+  check) dispatch "$S/healthcheck.sh" "$@" ;;
+  rename) dispatch "$S/rename.sh" "$@" ;;
+  claude) dispatch "$S/claude_local.sh" "$@" ;;
+  repos) dispatch "$S/repos_status.sh" "$@" ;;
+  ds4) cmd_ds4 "$@" ;;
+  review) REVIEW_AS="./lab review" "$HERE/review/review" "$@" ;;
+  "" | -h | --help | help) menu ;;
+  *) echo "unknown command '$verb'" >&2; echo >&2; menu >&2; exit 1 ;;
+esac

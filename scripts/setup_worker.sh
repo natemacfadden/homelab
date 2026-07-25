@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 #
-# setup_worker.sh - home lab worker node (Debian/Ubuntu)
-# installs a Ray worker that joins the head, plus node_exporter; optionally
-# rootless Docker and Grafana; layered memory limits: Ray kills greedy tasks at
-# 80%, and a systemd cgroup cap (95%) is the kernel backstop
+# provision THIS box as a worker node (Debian/Ubuntu): a Ray worker that joins
+# the head, plus node_exporter. Layered memory limits - Ray kills greedy tasks
+# at 80%, a systemd cgroup cap (95%) is the kernel backstop.
 #
-# usage (HEAD_IP required; RESOURCES is this box's Ray tag):
-#   HEAD_IP=192.168.1.50 RESOURCES='{"cuda": 1}' bash scripts/setup_worker.sh
-#   ... add INSTALL_DOCKER=1 and/or INSTALL_GRAFANA=1 (Grafana on one box only)
+#   HEAD_IP=192.168.1.50 RESOURCES='{"cuda": 1}' ./lab setup --worker
+#
+# env:
+#   HEAD_IP          required - the head's Tailscale name/IP (or LAN IP)
+#   RESOURCES        Ray tag this box advertises, e.g. '{"cuda": 1}'; default {}
+#   INSTALL_DOCKER   1 to add rootless Docker (for containerized tasks)
+#   INSTALL_GRAFANA  1 to add Grafana - one box only, it serves the dashboards
+#   INSTALL_SSH      0 to skip OpenSSH; SSH_KEY_ONLY / SSH_TAILSCALE_ONLY to lock it down
 # idempotent: safe to re-run
 #
 set -Eeuo pipefail
@@ -19,9 +23,11 @@ if [[ -z "${HEAD_IP:-}" ]]; then
 HEAD_IP is not set. Point this worker at the head node's Tailscale name/IP (or
 LAN IP), and optionally set RESOURCES (this box's Ray tag). Examples:
 
-  HEAD_IP=head01 RESOURCES='{"cuda": 1}'       bash scripts/setup_worker.sh
-  HEAD_IP=head01 RESOURCES='{"small_task": 1}' bash scripts/setup_worker.sh
-  HEAD_IP=100.x.y.z                            bash scripts/setup_worker.sh   # RESOURCES defaults to {}
+  HEAD_IP=head01 RESOURCES='{"cuda": 1}'       ./lab setup --worker
+  HEAD_IP=head01 RESOURCES='{"small_task": 1}' ./lab setup --worker
+  HEAD_IP=100.x.y.z                            ./lab setup --worker   # RESOURCES defaults to {}
+
+Full option list: ./lab setup --worker --help
 USAGE
   exit 1
 fi
