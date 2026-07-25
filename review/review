@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# One entry point for distributed repo reviews: pick a repo, run the review on a
+# Ray worker, file the results here, and triage the archive. See README.md.
+#
+#   ./review                       one review now, weighted pick
+#   ./review run [repo]            same; a repo name reviews that repo instead
+#   ./review run --loop [N]        review continuously, stalest-first (N caps cycles)
+#   ./review plan                  what would be picked, plus manifest health
+#   ./review watch                 follow the running review's lens phases
+#   ./review stop                  stop the running review AND drop the nightly cron
+#   ./review nightly               install cron: one review nightly at 3am
+#   ./review inbox [new]           archived reviews + scores, newest first
+#   ./review show <repo/stamp>     print that review's MEMO
+#   ./review mark <repo/stamp> <read|handled> ["note"]
+#
+# Run on the box that has the repos, the manifest, the raylab venv, and node.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ARCHIVE="${REVIEW_ARCHIVE:-$HOME/github/repo-review-out}"
+LOGDIR="$ARCHIVE/_cron"
+PIDFILE="$LOGDIR/driver.pid"
+LIVELOG="$LOGDIR/live.log"          # trim mirror of a run (no heartbeat frames)
+MODEL_URL="${REVIEW_MODEL_URL:-http://127.0.0.1:8000/v1}"
+VENV="${RAYLAB_VENV:-$HOME/raylab/venv}"
+CRON_TAG="# homelab review nightly"
+
+usage() { sed -n '5,14p' "$0" | cut -c3-; }
+die() { echo "$*" >&2; exit 1; }
+
+# Ray lives in the raylab venv; both `run` and `watch` need it on PATH.
+activate_venv() {
+  # shellcheck disable=SC1091
+  [ -f "$VENV/bin/activate" ] && source "$VENV/bin/activate"
+}
+
+# --- run --------------------------------------------------------------------
+
+cmd_run() {
+  mkdir -p "$LOGDIR"
+  local ts; ts="$(date -u +%Y-%m-%dT%H%M%SZ)"
+  if [ -t 1 ]; then
+    do_run "$@"
+  else
+    do_run "$@" >"$LOGDIR/$ts.log" 2>&1
+  fi
+}
+
+do_run() {
+  echo "=== review $(date -u +%Y-%m-%dT%H:%M:%SZ) (args: $*) ==="
+  echo "live log: $LIVELOG"
+  if ! curl -sf -m 5 "$MODEL_URL/models" >/dev/null; then
+    echo "model server not reachable at $MODEL_URL - skipping this run"
+    return 0
+  fi
+  activate_venv
+  REVIEW_PIDFILE="$PIDFILE" REVIEW_LOG="$LIVELOG" python "$HERE/driver.py" "$@"
+}
+
+cmd_plan() {
+  node "$HERE/schedule.mjs"
+}
+
+cmd_watch() {
+  activate_venv
+  read -r pid node_id < <(
+    RAY_ADDRESS="${RAY_ADDRESS:-auto}" ray list tasks --filter 'name=review' \
+      --filter 'state=RUNNING' --detail --format json 2>/dev/null \
+    | python -c 'import json,sys
+t = json.load(sys.stdin)
+print(t[0]["worker_pid"], t[0]["node_id"]) if t else print("", "")' 2>/dev/null
+  )
+  [ -n "${pid:-}" ] || { echo "no running review task (it may have finished)."; return 0; }
+  echo "== review on worker pid $pid (Ctrl-C to stop watching) =="
+  # The worker log is mostly Ray internals; keep the engine's phase lines only.
+  RAY_ADDRESS="${RAY_ADDRESS:-auto}" \
+    ray logs worker --pid "$pid" --node-id "$node_id" --tail -1 --follow 2>/dev/null \
+    | grep --line-buffered -aE \
+      'starting|detect|review (start|done|FAILED)|reconciled|synthesis|VERDICT|flavor '
+}
+
+cmd_stop() {
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    kill -TERM "$(cat "$PIDFILE")" \
+      && echo "sent graceful stop to the running review (pid $(cat "$PIDFILE"))"
+  else
+    echo "no running review"
+  fi
+  if crontab -l 2>/dev/null | grep -qF "$HERE/"; then
+    crontab -l 2>/dev/null | grep -vF "$CRON_TAG" | grep -vF "$HERE/" | crontab -
+    echo "removed nightly cron"
+  else
+    echo "no nightly cron scheduled"
+  fi
+}
+
+cmd_nightly() {
+  local line="0 3 * * * /bin/bash -lc '$HERE/review run'"
+  ( crontab -l 2>/dev/null | grep -vF "$CRON_TAG" | grep -vF "$HERE/"
+    echo "$CRON_TAG"; echo "$line" ) | crontab -
+  echo "scheduled nightly review: $line"
+}
+
+# --- triage over the archive -------------------------------------------------
+# Read/handled state lives in a .status file inside each review dir (absent =
+# new), so triage only ever writes to COMPLETED reviews - never to a live run.
+
+status_of() {
+  local f="$1/.status"
+  if [ -f "$f" ]; then head -1 "$f" | awk '{print $1}'; else echo new; fi
+}
+
+verdict_of() {
+  # first **bold** at or after the Verdict heading - handles both
+  # "## Verdict: **Hire**" and "## Verdict" + a bolded verdict in the next para.
+  awk '
+    /^#+[[:space:]]*[Vv]erdict/ { grab = 1 }
+    grab && match($0, /\*\*[^*]+\*\*/) {
+      print substr($0, RSTART + 2, RLENGTH - 4); exit
+    }
+  ' "$1/MEMO.md" 2>/dev/null | cut -c1-32
+}
+
+scores_of() {
+  # Overall + per-axis (P/C/E/T/D/H, rounded) from the reconciled-scores table.
+  # Score is column 2 of each "| Axis | score | range |" row; Overall is bolded.
+  awk '
+    /^##+.*[Rr]econciled [Ss]cores/ { intbl=1; next }
+    intbl && (/^---/ || /^##/) { exit }
+    intbl && /^\|/ {
+      split($0, c, "|"); axis=c[2]; score=c[3]
+      gsub(/[ *]/, "", axis); gsub(/[ *]/, "", score)
+      if (axis == "" || score == "" || axis == "Axis" || score ~ /^-+$/) next
+      if (axis ~ /[Oo]verall/) { overall=score; next }
+      val[++k]=score
+    }
+    END {
+      if (overall == "") overall="?"
+      s=""; for (i=1;i<=k;i++) s=s (i>1?"/":"") sprintf("%d", val[i]+0.5)
+      printf "%s %s", overall, (s=="" ? "-" : s)
+    }
+  ' "$1/MEMO.md" 2>/dev/null
+}
+
+cmd_inbox() {
+  local only="${1:-all}"
+  printf '%-8s %-32s %-6s %-14s %s\n' \
+    STATUS REPO/REVIEW SCORE P/C/E/T/D/H VERDICT
+  find "$ARCHIVE" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | while read -r d; do
+    [ -f "$d/MEMO.md" ] || continue
+    local st; st=$(status_of "$d")
+    [ "$only" = new ] && [ "$st" != new ] && continue
+    local repo stamp sc
+    repo=$(basename "$(dirname "$d")"); stamp=$(basename "$d")
+    sc=$(scores_of "$d")
+    # lead with the stamp as a hidden sort key -> newest first, then strip it
+    printf '%s\t%-8s %-32s %-6s %-14s %s\n' \
+      "$stamp" "$st" "$repo/$stamp" "${sc%% *}" "${sc#* }" "$(verdict_of "$d")"
+  done | sort -r | cut -f2-
+}
+
+# review dirs are addressed one way only: repo/stamp
+split_id() {
+  case "${1:-}" in
+    */*) repo="${1%/*}"; stamp="${1##*/}" ;;
+    *) die "expected <repo/stamp> (see ./review inbox)" ;;
+  esac
+  dir="$ARCHIVE/$repo/$stamp"
+  [ -d "$dir" ] || die "no such review: $dir"
+}
+
+cmd_show() {
+  local repo stamp dir; split_id "${1:-}"
+  cat "$dir/MEMO.md"
+}
+
+cmd_mark() {
+  local repo stamp dir; split_id "${1:-}"
+  local state="${2:-}" note="${*:3}"
+  case "$state" in
+    new | read | handled) ;;
+    *) die "state must be new|read|handled" ;;
+  esac
+  printf '%s %s %s\n' "$state" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$note" \
+    > "$dir/.status"
+  echo "$repo/$stamp -> $state${note:+  ($note)}"
+}
+
+# --- dispatch ---------------------------------------------------------------
+
+case "${1:-run}" in
+  run) shift; cmd_run "$@" ;;
+  plan) cmd_plan ;;
+  watch) cmd_watch ;;
+  stop) cmd_stop ;;
+  nightly) cmd_nightly ;;
+  inbox) cmd_inbox "${2:-all}" ;;
+  show) shift; cmd_show "$@" ;;
+  mark) shift; cmd_mark "$@" ;;
+  -h | --help | help) usage ;;
+  *) usage >&2; exit 1 ;;
+esac

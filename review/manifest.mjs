@@ -32,15 +32,6 @@ export function parseCsv(text) {
   return rows
 }
 
-// Serialize rows back to CSV (RFC4180 quoting) - inverse of parseCsv.
-export function toCsv(rows) {
-  const cell = (v) => {
-    const s = String(v == null ? '' : v)
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-  return rows.map(r => r.map(cell).join(',')).join('\n') + '\n'
-}
-
 // Manifest model
 // ==============
 
@@ -60,6 +51,7 @@ const HEADERS = {
   'specialization': 'specialization',
   'flavor': 'flavor',
   'note': 'note',
+  // parsed but ignored - the archive's stamped dirs are the real last-reviewed
   'last reviewed': 'lastReviewedCsv',
   'memory heavy': 'memoryHeavy',
 }
@@ -142,18 +134,8 @@ export function weightFor(importance, days, neverDays = 60) {
   return imp * ((days == null ? neverDays : days) + 1)
 }
 
-// Deterministic PRNG so a run is reproducible with --seed.
-export function mulberry32(seed) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
 // Weighted pick over a weights array; returns an index, or -1 if all zero.
+// `rng` is injectable so tests can drive the draw deterministically.
 export function pickWeighted(weights, rng = Math.random) {
   const total = weights.reduce((a, b) => a + b, 0)
   if (total <= 0) return -1

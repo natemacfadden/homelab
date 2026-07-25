@@ -1,8 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  parseCsv, toCsv, toManifest, healthCheck, daysSince, weightFor, pickWeighted,
-  mulberry32,
+  parseCsv, toManifest, healthCheck, daysSince, weightFor, pickWeighted,
 } from './manifest.mjs'
 
 // Fully synthetic fixture - exercises the parser/model only; no real data.
@@ -19,17 +18,6 @@ test('parseCsv: quoted commas and embedded newlines survive', () => {
   assert.equal(rows.length, 4) // header + 3 (the multi row spans two lines)
   assert.match(rows.find(r => r[0] === 'multi')[6], /line one\nline two/)
   assert.equal(rows.find(r => r[0] === 'alpha')[6], 'fast, small, tested')
-})
-
-test('toCsv: round-trips parseCsv (commas, quotes, newlines)', () => {
-  const rows = [
-    ['repo', 'note'],
-    ['a', 'plain'],
-    ['b', 'has, comma'],
-    ['c', 'has "quote"'],
-    ['d', 'line1\nline2'],
-  ]
-  assert.deepEqual(parseCsv(toCsv(rows)), rows)
 })
 
 test('healthCheck: opted-out (to review = 0) is skipped, not reviewable', () => {
@@ -78,10 +66,11 @@ test('daysSince: fractional (minute resolution), null passthrough', () => {
   assert.equal(daysSince(null, now), null)
 })
 
-test('pickWeighted: seeded rng is deterministic and respects weights', () => {
+test('pickWeighted: respects weights, never draws a zero', () => {
   const counts = [0, 0, 0]
-  const rng = mulberry32(42)
-  for (let i = 0; i < 100; i++) counts[pickWeighted([1, 0, 99], rng)]++
+  let i = 0
+  const rng = () => (i++ % 100) / 100 // sweeps [0,1) deterministically
+  for (let n = 0; n < 100; n++) counts[pickWeighted([1, 0, 99], rng)]++
   assert.equal(counts[1], 0) // zero weight never chosen
   assert.ok(counts[2] > counts[0]) // heavy weight dominates
   assert.equal(pickWeighted([0, 0, 0]), -1)

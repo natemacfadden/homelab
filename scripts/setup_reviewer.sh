@@ -7,6 +7,8 @@
 #
 #   REVIEW_MODEL_URL=http://compute01:8000/v1 bash scripts/setup_reviewer.sh
 #
+# REVIEW_MODEL_URL is the model's OpenAI-compatible base URL (ending in /v1) -
+# the same value review/ uses to health-check the server before each run.
 # Deploy from head like the other setup_*.sh (tar the repo over, run this).
 # Note: repo-review is private, so this box needs GitHub auth - `gh auth login`
 # (preferred) or git credentials/SSH for the https clone fallback.

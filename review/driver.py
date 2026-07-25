@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Distributed review driver (semi-automated).
+"""Distributed review driver - internal; run reviews with `./review`.
 
 Picks a repo with the Node scheduler HERE, ships it to a Ray worker (tagged
 REVIEW_WORKER_RESOURCE, default "mac"), runs the review there against the ds4
@@ -7,14 +7,13 @@ model, and files the returned docs + metrics into the local archive. Selection
 and results stay here; only execution is remote. OS-agnostic (Linux + macOS).
 
   python driver.py                one review, weighted pick
-  python driver.py <repo>         review a specific repo once (mode 1)
-  python driver.py --loop [N]     cycle continuously, stalest-first (mode 2)
+  python driver.py <repo>         review a specific repo once
+  python driver.py --loop [N]     cycle continuously, stalest-first
 
 Env: RAY_ADDRESS (default "auto"), REVIEW_GITHUB, REVIEW_ARCHIVE,
      REPO_REVIEW_MODEL (default ds4/deepseek-v4-flash),
      REVIEW_WORKER_RESOURCE (default "mac"; set "reviewer" to make it a role),
-     REVIEW_MEM_CAP_MB (0 = auto: ~90% of the worker's RAM),
-     REVIEW_REPO (force a specific repo in the weighted pick).
+     REVIEW_MEM_CAP_MB (0 = auto: ~90% of the worker's RAM).
 """
 import argparse
 import json
@@ -43,13 +42,12 @@ SWEEP_ORPHANS = os.environ.get("REVIEW_KILL_ORPHANS", "") == "1"
 
 
 def pick(repo=None):
-    """Choose a repo via the Node scheduler's --emit mode (no local memory
-    gate). A given repo (or REVIEW_REPO) forces one; else the weighted draw."""
+    """Choose a repo via the Node scheduler's --emit mode. A named repo forces
+    that one; otherwise it's the weighted draw."""
     choice = tempfile.mktemp(suffix=".json")
     cmd = ["node", SCHED, "--emit", choice]
-    forced = repo or os.environ.get("REVIEW_REPO")
-    if forced:
-        cmd += ["--repo", forced]
+    if repo:
+        cmd += ["--repo", repo]
     subprocess.run(cmd, check=True)
     return json.loads(pathlib.Path(choice).read_text())
 
@@ -258,7 +256,7 @@ class _Tee:
 
 def _heartbeat(name, stopflag):
     """Simple in-place liveness line (interactive only): repo + elapsed. No
-    remote-log polling - for the current lens, use watch.sh."""
+    remote-log polling - for the current lens, use `./review watch`."""
     start = time.time()
     while not stopflag["done"]:
         line = (f"[{time.strftime('%H:%M:%S')}] {name} - reviewing - "
@@ -334,16 +332,13 @@ def main():
             pass
 
     ap = argparse.ArgumentParser(description="Distributed repo-review driver.")
-    ap.add_argument("repo", nargs="?",
-                    help="mode 1: review this specific repo once")
+    ap.add_argument("repo", nargs="?", help="review this specific repo once")
     ap.add_argument("--loop", nargs="?", const=-1, type=int, metavar="N",
-                    help="mode 2: cycle continuously (stalest-first); "
+                    help="cycle continuously (stalest-first); "
                          "optional N caps the number of cycles")
-    ap.add_argument("--interval", type=int, default=0,
-                    help="seconds to wait between cycles in --loop")
     args = ap.parse_args()
 
-    # PID file so `run.sh --stop` can signal us (any mode).
+    # PID file so `./review stop` can signal us (any mode).
     pidfile = os.environ.get("REVIEW_PIDFILE")
     if pidfile:
         try:
@@ -355,8 +350,9 @@ def main():
             pass
 
     # log_to_driver=False: keep worker stdout ON the worker (reachable via
-    # watch.sh / ray logs) instead of streaming it into our terminal, where it
-    # would interleave with and scroll away the in-place heartbeat line.
+    # `./review watch` or `ray logs`) instead of streaming it into our
+    # terminal, where it would interleave with and scroll away the in-place
+    # heartbeat line.
     ray.init(address=os.environ.get("RAY_ADDRESS", "auto"), log_to_driver=False)
 
     is_loop = args.loop is not None
@@ -392,7 +388,7 @@ def main():
     print(bar)
     print("LOOP MODE - reviewing repos continuously, stalest-first.")
     print("  each cycle reviews the most-due repo; freshly reviewed ones sink.")
-    print(f"  PID {pid}    stop: run.sh --stop  (or Ctrl-C / kill {pid})")
+    print(f"  PID {pid}    stop: ./review stop  (or Ctrl-C / kill {pid})")
     if args.loop and args.loop > 0:
         print(f"  capped at {args.loop} cycle(s)")
     print(bar, flush=True)
@@ -414,10 +410,6 @@ def main():
             break
         if stop["n"]:
             break
-        if args.interval and stop["n"] == 0:
-            print(f"[cycle {n}] sleeping {args.interval}s (run.sh --stop to stop)",
-                  flush=True)
-            time.sleep(args.interval)
 
     print(f"\nloop stopped after {n} cycle(s).", flush=True)
 

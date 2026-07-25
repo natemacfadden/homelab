@@ -12,10 +12,15 @@ scripts/setup_worker.sh      Ray worker + node_exporter (+ optional Docker/Grafa
 scripts/setup_worker_mac.sh  macOS worker (uv + launchd; no systemd)
 scripts/deploy.sh            push + run setup on every worker (fleet deploy)
 scripts/setup_llm.sh         llama.cpp server on the big box (OpenAI-compatible API)
+scripts/setup_reviewer.sh    provision a worker to run repo reviews
 scripts/common.sh            shared helpers
 scripts/healthcheck.sh       verify a node's services are up
 scripts/rename.sh            rename a machine and restart Ray
+scripts/repos_status.sh      git sync report for every repo under ~/github
 ```
+
+[`review/`](review/README.md) uses the cluster: it reviews one of your repos a
+night on a tagged worker. Entry point `review/review`.
 
 ## Head node
 
