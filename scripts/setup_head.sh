@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# provision THIS box as the head node (always-on Debian box): Ray head,
+# provision this box as the head node (always-on Debian box): Ray head,
 # Prometheus, a nightly cron stub, and lid-close/sleep disabled. Run as your
 # normal user with sudo rights:
 #
@@ -10,7 +10,7 @@
 # Do this box first - the workers need that address.
 #
 # env:
-#   INSTALL_SSH   0 to skip OpenSSH (default 1). Password auth is left ALONE
+#   INSTALL_SSH   0 to skip OpenSSH (default 1). Password auth is left alone
 #                 unless you set SSH_KEY_ONLY=1, so a run can't lock you out;
 #                 SSH_TAILSCALE_ONLY=1 binds sshd to the Tailscale IP.
 #   PYTHON_VERSION / RAY_VERSION are pinned in scripts/common.sh and must match
@@ -28,8 +28,11 @@ source ./common.sh
 PROMETHEUS_VERSION="3.5.0"
 PROM_DIR="/opt/prometheus"
 RAY_PORT=6379
-# Prometheus scrape targets (source of truth; regenerates prometheus.yml on re-run)
-NODE_TARGETS=(ws1 ws2 bigbox macbook localhost)
+# node_exporter scrape targets; regenerates prometheus.yml on re-run. Linux
+# workers only - the mac and this box don't run node_exporter. Stale names here
+# kill host metrics silently, since Ray's own targets stay up. Check after a
+# rename: http://<head>:9090/targets
+NODE_TARGETS=(compute01 compute02 compute03)
 
 preflight
 
@@ -105,21 +108,16 @@ EOF
 sudo systemctl restart systemd-logind
 sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 
-echo "== [6/6] Tailscale + nightly cron stub =="
+echo "== [6/6] Tailscale =="
 install_tailscale
-mkdir -p "$LAB_DIR/jobs"
-cat > "$LAB_DIR/jobs/nightly_trawl.sh" <<EOF
-#!/usr/bin/env bash
-# pick the next repo (your scoring logic here), then submit it to Ray
-source $LAB_DIR/venv/bin/activate
-# ray job submit --address http://localhost:8265 -- python trawl.py --repo "\$REPO"
-EOF
-chmod +x "$LAB_DIR/jobs/nightly_trawl.sh"
-# rebuild the crontab, keeping other lines (|| true: fresh box has no crontab)
-{
-  crontab -l 2>/dev/null | grep -v nightly_trawl || true
-  echo "0 2 * * * $LAB_DIR/jobs/nightly_trawl.sh >> $LAB_DIR/jobs/trawl.log 2>&1"
-} | crontab -
+
+# Legacy cleanup: review/ replaced the old nightly_trawl.sh cron stub. Doing it
+# here means an older install gets cleaned by the next setup run.
+if crontab -l 2>/dev/null | grep -q nightly_trawl; then
+  crontab -l 2>/dev/null | grep -v nightly_trawl | crontab -
+  echo "removed the legacy nightly_trawl cron (superseded by ./review nightly)"
+fi
+rm -f "$LAB_DIR/jobs/nightly_trawl.sh"
 
 if [[ "${INSTALL_SSH:-1}" == "1" ]]; then install_ssh; fi
 

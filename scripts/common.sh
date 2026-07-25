@@ -15,18 +15,16 @@ LAB_DIR="$HOME/raylab"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"
 
 # apt-get that waits for the dpkg lock instead of failing when unattended-upgrades
-# holds it; tune the wait with APT_LOCK_TIMEOUT (seconds). On failure, say what to
-# do about it - the lock timeout is by far the most common cause.
+# holds it; tune the wait with APT_LOCK_TIMEOUT (seconds).
 apt_get() {
   local secs="${APT_LOCK_TIMEOUT:-300}" rc=0
   sudo apt-get -o DPkg::Lock::Timeout="$secs" "$@" || rc=$?
   [[ $rc -eq 0 ]] && return 0
   cat >&2 <<EOF
 
-apt-get failed. If it waited ${secs}s and gave up on the dpkg lock, Ubuntu's
-unattended-upgrades is holding it: wait for that to finish and re-run this
-(setup is idempotent), or raise the wait with APT_LOCK_TIMEOUT=900.
-Do NOT kill the updater - a half-finished dpkg run is worse than waiting.
+apt-get failed. If it gave up after ${secs}s on the dpkg lock, unattended-upgrades
+holds it: wait, then re-run (setup is idempotent), or raise APT_LOCK_TIMEOUT.
+Don't kill the updater - a half-finished dpkg run is worse than waiting.
 EOF
   return $rc   # keep apt's real code, so the ERR trap reports something useful
 }

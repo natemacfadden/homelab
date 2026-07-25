@@ -36,7 +36,7 @@ WORKER_RESOURCE = os.environ.get("REVIEW_WORKER_RESOURCE", "mac")
 MEM_CAP_MB = int(os.environ.get("REVIEW_MEM_CAP_MB", "0"))
 LOGFILE = os.environ.get("REVIEW_LOG")  # trim mirror of output (no heartbeat)
 # opt-in: on a worker DEDICATED to reviews, kill any leftover reviewer process
-# at each review start (catches orphans a worker-crash left). OFF by default -
+# at each review start (catches orphans a worker-crash left). off by default -
 # unsafe on a shared box, where it could kill another user's opencode.
 SWEEP_ORPHANS = os.environ.get("REVIEW_KILL_ORPHANS", "") == "1"
 
@@ -92,7 +92,7 @@ def review(choice, bundle, model, mem_cap_mb, sweep_orphans):
             pass
 
     # opt-in backstop (REVIEW_KILL_ORPHANS=1, dedicated workers only): kill any
-    # reviewer a prior worker-crash orphaned. OFF by default - on a shared box
+    # reviewer a prior worker-crash orphaned. off by default - on a shared box
     # this could kill another user's opencode. The on-exit cleanup below is the
     # safe, always-on path; this only covers a SIGKILL that skipped it.
     if sweep_orphans:
@@ -261,7 +261,7 @@ def _heartbeat(name, stopflag):
     while not stopflag["done"]:
         line = (f"[{time.strftime('%H:%M:%S')}] {name} - reviewing - "
                 f"{_fmt_elapsed(time.time() - start)}")
-        # Keep it to ONE line: truncate to just under the pane width so it can
+        # Keep it to one line: truncate to just under the pane width so it can
         # never wrap (a wrapped line makes \r rewind only the last row, which is
         # what turns the heartbeat into scrolling new lines). \r returns to col
         # 0, \x1b[K erases the old row, then we write the (short) line.

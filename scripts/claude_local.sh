@@ -21,7 +21,7 @@ LLM_HOST="${LLM_HOST:-compute01}"
 SERVICE="${SERVICE:-ds4-server}"
 LLM_PORT="${LLM_PORT:-8000}"
 MODEL="${MODEL:-deepseek-v4-flash}"
-# context window of the local model - MUST match the server's context
+# context window of the local model - must match the server's context
 # (ds4-server --ctx in its systemd unit; ds4 serves one session at a time, so
 # no per-slot division), or Claude Code assumes ~200k and never auto-compacts
 # before the server overflows

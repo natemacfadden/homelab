@@ -5,7 +5,8 @@ Prometheus, Tailscale, and optional Grafana/Docker. You install the OS; the
 scripts do the rest. Everything is idempotent — re-running is safe, and is how
 you apply a config change.
 
-Architecture and machine roles: [docs/PLAN.md](docs/PLAN.md).
+What each box is and why it's shaped that way:
+[docs/CLUSTER.md](docs/CLUSTER.md).
 
 ## `./lab`
 

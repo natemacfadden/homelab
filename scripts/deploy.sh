@@ -14,19 +14,17 @@
 #   compute02                  | {"cuda": 1}                 |             | linux
 #   natemacfadden@computemac01 | {"mac": 1}                  |             | mac
 #
-# a bare host logs in as SSH_USER (default: your current user); write user@host
-# for a box whose login differs. Extra flags are per-box env, e.g. INSTALL_DOCKER=1
+# a bare host logs in as SSH_USER (default: your current user); write user@host if
+# the login differs. Extra flags are per-box env, e.g. INSTALL_DOCKER=1
 #
-# --check runs whatever is already on each box (no push), so a worker needs one
-# full deploy before it works.
+# --check runs what's already on each box (no push), so deploy once first.
 #
-# one-time prep per box:
-#   ssh-copy-id nate@compute01     passwordless key login (deploy needs it)
+# one-time prep, on each worker:
+#   ssh-copy-id nate@compute01     key login; deploy needs it
 #   echo "$USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/homelab
-#                                  on the WORKER, to skip its sudo prompt;
-#                                  scope it to apt-get/systemctl/tee/tar if you
-#                                  want a tighter grant. Without it, deploy stops
-#                                  at each box for a password (ssh -t).
+#                                  skips its sudo prompt (else deploy stops at
+#                                  each box for a password). Scope it to
+#                                  apt-get/systemctl/tee/tar if you prefer.
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."   # repo root

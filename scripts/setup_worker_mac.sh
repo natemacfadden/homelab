@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# join THIS macOS box (e.g. the MacBook) to the Ray cluster as a worker. macOS
+# join this macOS box (e.g. the MacBook) to the Ray cluster as a worker. macOS
 # has no systemd or apt, so this uses uv for the pinned Python and launchd (the
 # macOS service manager) to keep the worker running and restart it on boot.
 #

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# add the reviewer toolchain to THIS box, so a worker can RUN repo reviews (not
+# add the reviewer toolchain to this box, so a worker can run repo reviews (not
 # just join the cluster):
 #   - node + git + coreutils (for `timeout`) + modern bash (for `mapfile`)
 #   - opencode, pointed at the ds4 model

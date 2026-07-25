@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# provision THIS box (the big one: Strix Halo, Vulkan) as a llama.cpp server:
+# provision this box (the big one: Strix Halo, Vulkan) as a llama.cpp server:
 # downloads a pinned prebuilt Vulkan release, generates an API key once, and
 # installs a systemd service serving an OpenAI-compatible API on the network.
 #

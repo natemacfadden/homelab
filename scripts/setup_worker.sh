@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# provision THIS box as a worker node (Debian/Ubuntu): a Ray worker that joins
+# provision this box as a worker node (Debian/Ubuntu): a Ray worker that joins
 # the head, plus node_exporter. Layered memory limits - Ray kills greedy tasks
 # at 80%, a systemd cgroup cap (95%) is the kernel backstop.
 #
@@ -12,20 +12,17 @@
 #   RESOURCES        this box's Ray tag(s), e.g. '{"cuda": 1}'; default {}
 #   INSTALL_DOCKER   1 to add rootless Docker, so tasks that install software run
 #                    containerized instead of getting sudo
-#   INSTALL_GRAFANA  1 to add Grafana - ONE box only, it serves the dashboards
+#   INSTALL_GRAFANA  1 to add Grafana - one box only, it serves the dashboards
 #                    for the whole cluster (point it at the head's :9090)
-#   INSTALL_SSH      0 to skip OpenSSH (default 1). Password auth is left ALONE
+#   INSTALL_SSH      0 to skip OpenSSH (default 1). Password auth is left alone
 #                    unless you set SSH_KEY_ONLY=1, so a run can't lock you out;
 #                    SSH_TAILSCALE_ONLY=1 binds sshd to the Tailscale IP.
 #
-# about RESOURCES: these are arbitrary labels YOU invent so tasks can target a
-# box - a task lands here only if it asks for the tag, e.g.
-# @ray.remote(resources={"cuda": 1}). The number is a concurrency limit (how many
-# such tasks at once), NOT hardware: {"cuda": 1} means one at a time. A box can
-# advertise several: '{"amd": 1, "big_memory": 1}'. CPUs and GPUs are detected
-# separately, so tags are only for what you want to schedule on deliberately.
-# The value is baked into this box's systemd unit, so it survives reboots -
-# change it by re-running with a new RESOURCES (or via './lab deploy').
+# RESOURCES are labels you invent, not hardware facts: a task lands here only if
+# it asks for the tag (@ray.remote(resources={"cuda": 1})), and the number is a
+# concurrency limit - {"cuda": 1} means one such task at a time. Several is fine:
+# '{"amd": 1, "big_memory": 1}'. CPUs/GPUs are detected separately. The value is
+# baked into the systemd unit, so change it by re-running.
 #
 # idempotent: safe to re-run; re-running restarts ray-worker and node_exporter.
 #

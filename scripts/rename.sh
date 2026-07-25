@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# rename THIS machine (OS hostname + Tailscale name) and restart Ray so it picks
+# rename this machine (OS hostname + Tailscale name) and restart Ray so it picks
 # up the new name; works on Linux (hostnamectl/systemd) and macOS
 # (scutil/launchd). Run it on the box you're renaming:
 #

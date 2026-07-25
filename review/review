@@ -26,20 +26,18 @@ MODEL_URL="${REVIEW_MODEL_URL:-http://127.0.0.1:8000/v1}"
 VENV="${RAYLAB_VENV:-$HOME/raylab/venv}"
 CRON_TAG="# homelab review nightly"
 
-# The command block above IS the usage; rewrite the prefix so the help shows how
-# you actually invoked this (./review, or ./lab review), then add the operational
-# facts with the paths RESOLVED, so help reflects this box's config.
+# The command block above is the usage; rewrite the prefix to match how this was
+# invoked, and print the paths resolved rather than assumed.
 usage() {
   sed -n '5,14p' "$0" | cut -c3- | sed "s|\./review|${REVIEW_AS:-./review}|"
   cat <<EOF
 
-Reviews land in $ARCHIVE/<repo>/<stamp>/ - one doc per lens, plus MEMO.md and
-metrics.json. A run skips itself (exit 0) if the model server at $MODEL_URL
-is unreachable, and logs to $LOGDIR.
+output    $ARCHIVE/<repo>/<stamp>/  (one doc per lens, MEMO.md, metrics.json)
+logs      $LOGDIR
+model     $MODEL_URL  (a run skips itself if this is unreachable)
+manifest  $MANIFEST  (importance x staleness; see '${REVIEW_AS:-./review} plan')
 
-Which repo gets reviewed comes from $MANIFEST, weighted by
-importance x staleness; '${REVIEW_AS:-./review} plan' shows the draw and flags manifest
-problems. Why and how: review/README.md
+Why and how it works: review/README.md
 EOF
 }
 die() { echo "$*" >&2; exit 1; }
