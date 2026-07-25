@@ -19,7 +19,8 @@ setup --head | --worker | --worker-mac | --llm | --reviewer   provision this box
 deploy [--check]                                              push to every worker
 check                                                         verify this box
 rename <name>                                                 rename this box
-claude | ds4 | repos | review                                 use the cluster
+claude | ds4 | review                                         use the cluster
+tools                                                         put tools/ on your PATH
 ```
 
 ## Bring-up order
@@ -59,3 +60,9 @@ ssh user@head-ip 'cd ~/homelab && ./lab setup --head'
 directly, and their leading comments are the `--help` text you get through it.
 [`review/`](review/README.md) is the one subsystem with its own docs — it reviews
 one of your repos a night on a tagged worker.
+
+`tools/` is different: small utilities that have nothing to do with the cluster
+and just ride along here to stay versioned and reach the boxes. `./lab tools`
+symlinks them into `~/.local/bin`, after which you call them by name from
+anywhere (`repos --help`). It's not part of `setup`, since they aren't wanted on
+every node.

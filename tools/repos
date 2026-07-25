@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#
+# git sync report for every repo in a directory: fetches each remote, then flags
+# dirty working trees and ahead/behind vs upstream.
+#
+#   repos                    every repo in the current directory
+#   repos --no-fetch         skip the fetch (fast, may be stale)
+#   repos /path/to/tree      somewhere else, without cd-ing
+#
+# Looks one level down, so run it from the directory that holds your checkouts.
+#
+set -uo pipefail
+
+usage() { sed -n '2,/^[^#]/p' "$0" | grep '^#' | cut -c2- | sed 's/^ //; /./,$!d'; }
+
+fetch=1
+root="$PWD"
+for a in "$@"; do
+  case "$a" in
+    -h | --help) usage; exit 0 ;;
+    --no-fetch) fetch=0 ;;
+    *) root="$a" ;;
+  esac
+done
+
+# Collect first: cheap, and it decides between the table and "nothing here".
+# Each child must be a repo ROOT - --is-inside-work-tree is also true for a
+# repo's own subdirectories, which would list src/, tests/ ... as repos.
+repos=()
+for d in "$root"/*/; do
+  top=$(git -C "$d" rev-parse --show-toplevel 2>/dev/null) || continue
+  [ "$top" = "$(cd "$d" 2>/dev/null && pwd -P)" ] && repos+=("$d")
+done
+if [ ${#repos[@]} -eq 0 ]; then
+  echo "no git repos in $root - repos looks one level down." >&2
+  here=$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$here" ]; then
+    echo "you're inside $(basename "$here"); for its siblings: repos $(dirname "$here")" >&2
+  else
+    echo "run it where your checkouts live, or: repos /path/to/tree" >&2
+  fi
+  exit 1
+fi
+
+printf '%s\n\n' "${#repos[@]} repos in $root"
+printf '%-18s %-16s %-10s %s\n' REPO BRANCH TREE REMOTE
+printf '%-18s %-16s %-10s %s\n' ------ ------ ---- ------
+for d in "${repos[@]}"; do
+  name=$(basename "$d")
+  [ "$fetch" = 1 ] && timeout 20 git -C "$d" fetch -q 2>/dev/null
+  branch=$(git -C "$d" symbolic-ref --short -q HEAD || echo '(detached)')
+  n=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+  tree=$([ "$n" -eq 0 ] && echo clean || echo "dirty:$n")
+  if ab=$(git -C "$d" rev-list --left-right --count '@{u}...HEAD' 2>/dev/null); then
+    behind=$(echo "$ab" | awk '{print $1}')
+    ahead=$(echo "$ab" | awk '{print $2}')
+    if [ "$ahead" = 0 ] && [ "$behind" = 0 ]; then
+      remote='up-to-date'
+    else
+      remote="ahead:$ahead behind:$behind"
+    fi
+  else
+    remote='no upstream'
+  fi
+  printf '%-18s %-16s %-10s %s\n' "$name" "$branch" "$tree" "$remote"
+done

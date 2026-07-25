@@ -29,8 +29,10 @@ THIS BOX
 USE THE CLUSTER
   ./lab claude [args]         Claude Code against the local model
   ./lab ds4                   ds4-server in the foreground (big box)
-  ./lab repos                 git sync report over ~/github
   ./lab review ...            repo reviews (./lab review help)
+
+YOUR TOOLS
+  ./lab tools                 put tools/ on your PATH, then run them anywhere
 
 ./lab <verb> --help for detail.
 EOF
@@ -91,6 +93,37 @@ cmd_setup() {
   dispatch "$script" "$@"
 }
 
+cmd_tools() {
+  local dest="$HOME/.local/bin"
+  if wants_help "$@"; then
+    cat <<EOF
+./lab tools    symlink tools/ into $dest, so they run from any directory
+
+tools/ holds small utilities that aren't part of the cluster - they just ride
+along in this repo to stay versioned and to reach the boxes via ./lab deploy.
+Deliberately not part of ./lab setup: they aren't needed on every node.
+Idempotent; re-run after adding a tool.
+
+$(ls "$HERE/tools" 2>/dev/null | sed 's/^/  /')
+EOF
+    return 0
+  fi
+  mkdir -p "$dest"
+  local n=0 t
+  for t in "$HERE"/tools/*; do
+    [ -f "$t" ] && [ -x "$t" ] || continue
+    ln -sfn "$t" "$dest/$(basename "$t")"
+    echo "  $(basename "$t") -> $t"
+    n=$((n + 1))
+  done
+  [ "$n" -eq 0 ] && { echo "no executables in $HERE/tools" >&2; return 1; }
+  echo "linked $n into $dest"
+  case ":$PATH:" in
+    *":$dest:"*) ;;
+    *) echo "warning: $dest is not on your PATH; add it to your shell profile" >&2 ;;
+  esac
+}
+
 cmd_ds4() {
   # Same flags as the ds4-server systemd unit: a bare ./ds4-server would default
   # to a 32k context. Stop the service first, or the port clashes.
@@ -124,8 +157,8 @@ case "$verb" in
   check) dispatch "$S/healthcheck.sh" "$@" ;;
   rename) dispatch "$S/rename.sh" "$@" ;;
   claude) dispatch "$S/claude_local.sh" "$@" ;;
-  repos) dispatch "$S/repos_status.sh" "$@" ;;
   ds4) cmd_ds4 "$@" ;;
+  tools) cmd_tools "$@" ;;
   review) REVIEW_AS="./lab review" "$HERE/review/review" "$@" ;;
   "" | -h | --help | help) menu ;;
   *) echo "unknown command '$verb'" >&2; echo >&2; menu >&2; exit 1 ;;
