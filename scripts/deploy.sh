@@ -7,11 +7,26 @@
 #   ./lab deploy --check                   run the healthcheck on each instead
 #
 # the fleet list is the WORKERS array at the top of scripts/deploy.sh - edit it
-# there (one row per worker: host | RESOURCES | extra flags | linux|mac)
+# there. One row per worker, '|'-separated:
 #
-# needs passwordless (key) SSH to each host - see the README "Deploy to all
-# workers" section for the one-time ssh-copy-id setup. --check runs whatever is
-# already on each box, so deploy at least once before relying on it.
+#   # host                     | RESOURCES                   | extra flags | os
+#   compute01                  | {"amd": 1, "big_memory": 1} |             | linux
+#   compute02                  | {"cuda": 1}                 |             | linux
+#   natemacfadden@computemac01 | {"mac": 1}                  |             | mac
+#
+# a bare host logs in as SSH_USER (default: your current user); write user@host
+# for a box whose login differs. Extra flags are per-box env, e.g. INSTALL_DOCKER=1
+#
+# --check runs whatever is already on each box (no push), so a worker needs one
+# full deploy before it works.
+#
+# one-time prep per box:
+#   ssh-copy-id nate@compute01     passwordless key login (deploy needs it)
+#   echo "$USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/homelab
+#                                  on the WORKER, to skip its sudo prompt;
+#                                  scope it to apt-get/systemctl/tee/tar if you
+#                                  want a tighter grant. Without it, deploy stops
+#                                  at each box for a password (ssh -t).
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."   # repo root
@@ -49,14 +64,28 @@ for row in "${WORKERS[@]}"; do
   echo "== $host ($os) =="
 
   if [[ "$MODE" == "check" ]]; then
-    ssh "$target" 'cd ~/homelab && ./lab check' || fail=1
+    if ! ssh "$target" 'cd ~/homelab && ./lab check'; then
+      fail=1
+      # --check never pushes, so a missing ./lab means this box predates it
+      ssh "$target" 'test -x ~/homelab/lab' 2>/dev/null || echo \
+        "  no ~/homelab/lab on $host - run a full deploy first (HEAD_IP=... ./lab deploy)" >&2
+    fi
     continue
   fi
 
   # push the repo (tar over ssh - no rsync needed on either end), then run its
   # setup script with this box's config
   if ! tar czf - --exclude=.git . | ssh "$target" 'mkdir -p ~/homelab && tar xzf - -C ~/homelab'; then
-    echo "  copy failed - check SSH to $host (see README)" >&2; fail=1; continue
+    { echo "  copy to $target failed - SSH is the usual cause:"
+      echo "    'Permission denied (publickey)' - your key isn't on the box:"
+      echo "        ssh-copy-id $target      (from a box that can still log in)"
+      if [[ "$os" == "mac" ]]; then
+        echo "    'Connection closed' - macOS Remote Login is off, or the login is"
+        echo "        wrong; enable Remote Login and use the mac's own account."
+      fi
+      echo "    a fresh linux worker has no sshd until its first setup run"
+    } >&2
+    fail=1; continue
   fi
   role=--worker
   [[ "$os" == "mac" ]] && role=--worker-mac

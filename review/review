@@ -18,6 +18,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ARCHIVE="${REVIEW_ARCHIVE:-$HOME/github/repo-review-out}"
+MANIFEST="${REVIEW_MANIFEST:-$HOME/github/manifest.csv}"
 LOGDIR="$ARCHIVE/_cron"
 PIDFILE="$LOGDIR/driver.pid"
 LIVELOG="$LOGDIR/live.log"          # trim mirror of a run (no heartbeat frames)
@@ -26,8 +27,21 @@ VENV="${RAYLAB_VENV:-$HOME/raylab/venv}"
 CRON_TAG="# homelab review nightly"
 
 # The command block above IS the usage; rewrite the prefix so the help shows how
-# you actually invoked this (./review, or ./lab review).
-usage() { sed -n '5,14p' "$0" | cut -c3- | sed "s|\./review|${REVIEW_AS:-./review}|"; }
+# you actually invoked this (./review, or ./lab review), then add the operational
+# facts with the paths RESOLVED, so help reflects this box's config.
+usage() {
+  sed -n '5,14p' "$0" | cut -c3- | sed "s|\./review|${REVIEW_AS:-./review}|"
+  cat <<EOF
+
+Reviews land in $ARCHIVE/<repo>/<stamp>/ - one doc per lens, plus MEMO.md and
+metrics.json. A run skips itself (exit 0) if the model server at $MODEL_URL
+is unreachable, and logs to $LOGDIR.
+
+Which repo gets reviewed comes from $MANIFEST, weighted by
+importance x staleness; '${REVIEW_AS:-./review} plan' shows the draw and flags manifest
+problems. Why and how: review/README.md
+EOF
+}
 die() { echo "$*" >&2; exit 1; }
 
 # Ray lives in the raylab venv; both `run` and `watch` need it on PATH.

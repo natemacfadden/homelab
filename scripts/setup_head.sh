@@ -6,9 +6,20 @@
 #
 #   ./lab setup --head
 #
-# Prometheus scrape targets are the NODE_TARGETS array below - edit and re-run.
 # Prints the address to use as HEAD_IP on the workers, and saves it to ~/ip.txt.
-# Idempotent: re-running restarts ray-head and prometheus.
+# Do this box first - the workers need that address.
+#
+# env:
+#   INSTALL_SSH   0 to skip OpenSSH (default 1). Password auth is left ALONE
+#                 unless you set SSH_KEY_ONLY=1, so a run can't lock you out;
+#                 SSH_TAILSCALE_ONLY=1 binds sshd to the Tailscale IP.
+#   PYTHON_VERSION / RAY_VERSION are pinned in scripts/common.sh and must match
+#                 on every node - Ray refuses to join otherwise.
+#
+# edit-and-re-run config: the Prometheus scrape list is the NODE_TARGETS array
+# at the top of scripts/setup_head.sh.
+# Idempotent: re-running restarts ray-head and prometheus (see the note it
+# prints about workers reconnecting).
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -130,6 +141,13 @@ echo
   echo "  Prometheus     http://$HEAD_ADDR:9090"
 } | tee "$HOME/ip.txt"
 echo "(also saved to $HOME/ip.txt)"
+
+# restarting the head resets Ray, so existing workers drop; they come back on
+# their own. Say so here, or it reads as a broken cluster.
+echo
+echo "Note: this restarted Ray, so any existing workers just dropped. They"
+echo "reconnect on their own over a minute or two - nudge a straggler with"
+echo "'sudo systemctl restart ray-worker' on that box, and confirm with './lab check'."
 
 echo
 run_healthcheck

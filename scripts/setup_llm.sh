@@ -105,5 +105,7 @@ curl -fsS "http://localhost:$LLM_PORT/health" && echo || {
 echo "
 Done. From any box on the tailnet/LAN:
   OPENAI_BASE_URL=http://$(hostname):$LLM_PORT/v1
-  OPENAI_API_KEY=\$(cat $KEY_FILE)   # or copy it: $KEY_FILE
-Swap models:  MODEL=/path/to/other.gguf ./lab setup --llm"
+  OPENAI_API_KEY=\$(cat $KEY_FILE)   # this box only; copy it where you need it
+Verify:       curl http://$(hostname):$LLM_PORT/v1/models -H \"Authorization: Bearer \$(cat $KEY_FILE)\"
+Swap models:  MODEL=/path/to/other.gguf ./lab setup --llm
+Drive Claude Code with it:  ./lab claude   (see ./lab claude --help)"

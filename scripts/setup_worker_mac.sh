@@ -11,7 +11,15 @@
 #
 # env:
 #   HEAD_IP      required - the head's Tailscale name/IP
-#   RESOURCES    Ray tag this box advertises; default {"mac": 1}
+#   RESOURCES    this box's Ray tag(s); default {"mac": 1}. Arbitrary labels you
+#                invent so tasks can target this box; the number is a concurrency
+#                limit, not hardware. See ./lab setup --worker --help.
+#
+# SSH: macOS needs Remote Login enabled for './lab deploy' to reach this box
+# (System Settings > General > Sharing). This script enables it if it can - that
+# needs Full Disk Access for your terminal, else turn it on by hand.
+#
+# idempotent: safe to re-run; re-running reloads the launchd job.
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"

@@ -11,38 +11,25 @@ in `repo-review-out/<repo>/<stamp>/` — one doc per lens, plus `MEMO.md` and
 ## Run
 
 `./review` is the only entry point (or `./lab review …` from the repo root — same
-thing). Run it on the box with the repos, the manifest, the `raylab` venv, and
-node (that box also needs to reach the model server, and at least one worker must
-be tagged as a reviewer — see [Setup](#setup)).
+thing); `./review help` lists every command with the paths it resolved. Run it on
+the box that has the repos, the manifest, the `raylab` venv, and node — and that
+can reach the model server. At least one worker must be tagged as a reviewer, see
+[Setup](#setup).
 
-```
-./review                       one review now, weighted pick
-./review run <repo>            review a specific repo instead
-./review run --loop [N]        review continuously, stalest-first (N caps cycles)
-./review nightly               install cron: one review nightly at 3am
-./review stop                  stop the running review AND drop the nightly cron
-```
+Behaviour worth knowing before you trust it:
 
-A run prints a live heartbeat (repo + elapsed) and mirrors its output to
-`repo-review-out/_cron/live.log`; under cron it logs to
-`repo-review-out/_cron/<stamp>.log`. If the model server is unreachable the run
-says so and exits instead of failing halfway.
-
-## Watch and triage
-
-```
-./review watch                 follow the running review's lens phases
-./review plan                  what would be picked, and manifest health
-./review inbox [new]           archived reviews + scores, newest first
-./review show <repo/stamp>     print that review's MEMO
-./review mark <repo/stamp> <read|handled> ["note"]
-```
-
-`inbox` tracks read/handled state in a `.status` file inside each review dir
-(absent = new), so triage only ever writes to finished reviews — it can't
-disturb a running loop. `plan` is also the health check: it lists every repo
-with its weight and flags manifest problems (missing from disk, not a git repo,
-on disk but unlisted), exiting non-zero if any warning fires.
+- A run prints a live heartbeat and mirrors output to `_cron/live.log`; under
+  cron it logs to `_cron/<stamp>.log`. An unreachable model server makes the run
+  skip cleanly rather than fail halfway, so a nightly cron can't wedge.
+- `inbox` tracks read/handled state in a `.status` file inside each review dir
+  (absent = new), so triage only ever writes to finished reviews — it can't
+  disturb a running loop.
+- `plan` doubles as the health check: every repo with its weight, plus manifest
+  problems (missing from disk, not a git repo, on disk but unlisted). It exits
+  non-zero if any warning fires, so cron notices a stale manifest.
+- `stop` is deliberately two things at once — it signals the running review *and*
+  removes the nightly cron, because "stop reviewing" almost never means "stop
+  this one and resume at 3am".
 
 ## Setup
 

@@ -7,12 +7,27 @@
 #   HEAD_IP=192.168.1.50 RESOURCES='{"cuda": 1}' ./lab setup --worker
 #
 # env:
-#   HEAD_IP          required - the head's Tailscale name/IP (or LAN IP)
-#   RESOURCES        Ray tag this box advertises, e.g. '{"cuda": 1}'; default {}
-#   INSTALL_DOCKER   1 to add rootless Docker (for containerized tasks)
-#   INSTALL_GRAFANA  1 to add Grafana - one box only, it serves the dashboards
-#   INSTALL_SSH      0 to skip OpenSSH; SSH_KEY_ONLY / SSH_TAILSCALE_ONLY to lock it down
-# idempotent: safe to re-run
+#   HEAD_IP          required - the head's Tailscale name/IP (or LAN IP). Get it
+#                    from './lab setup --head' output, or ~/ip.txt on the head.
+#   RESOURCES        this box's Ray tag(s), e.g. '{"cuda": 1}'; default {}
+#   INSTALL_DOCKER   1 to add rootless Docker, so tasks that install software run
+#                    containerized instead of getting sudo
+#   INSTALL_GRAFANA  1 to add Grafana - ONE box only, it serves the dashboards
+#                    for the whole cluster (point it at the head's :9090)
+#   INSTALL_SSH      0 to skip OpenSSH (default 1). Password auth is left ALONE
+#                    unless you set SSH_KEY_ONLY=1, so a run can't lock you out;
+#                    SSH_TAILSCALE_ONLY=1 binds sshd to the Tailscale IP.
+#
+# about RESOURCES: these are arbitrary labels YOU invent so tasks can target a
+# box - a task lands here only if it asks for the tag, e.g.
+# @ray.remote(resources={"cuda": 1}). The number is a concurrency limit (how many
+# such tasks at once), NOT hardware: {"cuda": 1} means one at a time. A box can
+# advertise several: '{"amd": 1, "big_memory": 1}'. CPUs and GPUs are detected
+# separately, so tags are only for what you want to schedule on deliberately.
+# The value is baked into this box's systemd unit, so it survives reboots -
+# change it by re-running with a new RESOURCES (or via './lab deploy').
+#
+# idempotent: safe to re-run; re-running restarts ray-worker and node_exporter.
 #
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"

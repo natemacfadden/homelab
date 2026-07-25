@@ -4,9 +4,31 @@
 #
 #   ./lab check
 #
-# auto-detects head/worker (systemd) or macOS worker (launchd), exits non-zero if
-# any check fails (usable from cron or CI), and confirms the node actually joined
-# the cluster, not just that its service is running
+# auto-detects head / linux worker / macOS worker (launchd), checks the services
+# and their ports, and exits non-zero if anything is down (usable from cron/CI).
+# Runs automatically at the end of every './lab setup' role.
+#
+# It also verifies the node actually JOINED the cluster, not just that a service
+# is running - ray-worker can be 'active' (systemd only knows the local process
+# forked) while the head never registered it: wrong HEAD_IP, unreachable GCS, or a
+# Ray/Python version mismatch. So on a worker:
+#
+#   head GCS <addr> reachable   TCP to the head's :6379, using the --address
+#                               baked into this box's worker service
+#   joined Ray cluster          asks the HEAD for its node list, and reports
+#                                 present              - all good
+#                                 REGISTERED BUT DEAD  - the head knew this node
+#                                                        but it dropped; restart
+#                                                        ray-worker here
+#                                 MISSING              - never joined; check
+#                                                        HEAD_IP and the Ray pin
+#
+# This is the check that catches an "All checks passed" worker that still isn't in
+# 'ray status' on the head. On the head it adds a 'cluster nodes' count, so a head
+# serving an empty cluster is obvious at a glance.
+#
+# 'No homelab services found' means setup hasn't finished on this box (or you ran
+# the check mid-reinstall, before the service came up).
 #
 set -uo pipefail   # deliberately not -e: run every check, then report
 LAB_DIR="$HOME/raylab"
