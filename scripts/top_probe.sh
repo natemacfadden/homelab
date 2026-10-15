@@ -1,4 +1,4 @@
-# Sent over ssh by scripts/top.sh and run on each box with bash (3.2 on the
+# Sent over ssh by scripts/top.py and run on each box with bash (3.2 on the
 # Mac, so nothing newer). Prints key=value lines and one 'gpu=' line per GPU:
 #   gpu=<name>, <util%>, <used MiB>, <total MiB>, <temp C>, <power W>
 #   disk=<mount>, <used KiB>, <size KiB>      one per real filesystem
@@ -10,9 +10,12 @@ if [ "$(uname)" = Darwin ]; then
   echo "cpu=$(top -l 2 -n 0 -s 1 | awk '/CPU usage/ { u = $3 + $5 } END { printf "%d", u }')"
   echo "load=$(sysctl -n vm.loadavg | awk '{ print $2 }')"
   echo "ncpu=$(sysctl -n hw.ncpu)"
-  total=$(sysctl -n hw.memsize)
-  free=$(memory_pressure | awk '/free percentage/ { sub("%", "", $5); print $5 }')
-  echo "mem=$(awk -v t="$total" -v f="$free" 'BEGIN { printf "%d %d", t * (100 - f) / 100 / 1048576, t / 1048576 }')"
+  # used = active + wired + compressed pages, close to Activity Monitor's
+  # "Memory Used"; memory_pressure's free % counts cache and swings wildly
+  echo "mem=$(vm_stat | awk -v t="$(sysctl -n hw.memsize)" '
+    /page size of/ { ps = $8 }
+    /Pages active|Pages wired down|occupied by compressor/ { gsub("\\.", "", $NF); n += $NF }
+    END { printf "%d %d", n * ps / 1048576, t / 1048576 }')"
   # the APFS data volume is where everything but the sealed OS lives
   df -Pk /System/Volumes/Data | awk 'NR > 1 { printf "disk=/, %d, %d\n", $3, $3 + $4 }'
   exit 0
