@@ -17,6 +17,7 @@ without what it needs tells you what's missing.
 ```
 setup --head | --worker | --worker-mac | --llm | --reviewer   provision this box
 deploy [--check]                                              push to every worker
+top [--once]                                                  live fleet utilization
 check                                                         verify this box
 rename <name>                                                 rename this box
 claude | ds4 | review                                         use the cluster

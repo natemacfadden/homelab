@@ -19,6 +19,7 @@ PROVISION (run on the box itself; needs sudo; idempotent)
   ./lab setup --reviewer      reviewer toolchain on a worker
 
 FLEET (run from the head or your laptop)
+  ./lab top                   live CPU/RAM/disk/GPU dashboard for every box
   ./lab deploy                push this repo + run setup on every worker
   ./lab deploy --check        healthcheck each worker instead
 
@@ -155,6 +156,7 @@ case "$verb" in
   setup) cmd_setup "$@" ;;
   deploy) dispatch "$S/deploy.sh" "$@" ;;
   check) dispatch "$S/healthcheck.sh" "$@" ;;
+  top) dispatch "$S/top.sh" "$@" ;;
   rename) dispatch "$S/rename.sh" "$@" ;;
   claude) dispatch "$S/claude_local.sh" "$@" ;;
   ds4) cmd_ds4 "$@" ;;
