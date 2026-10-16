@@ -156,7 +156,7 @@ case "$verb" in
   setup) cmd_setup "$@" ;;
   deploy) dispatch "$S/deploy.sh" "$@" ;;
   check) dispatch "$S/healthcheck.sh" "$@" ;;
-  top) if wants_help "$@"; then show_doc "$S/top.py"; else exec python3 "$S/top.py" "$@"; fi ;;
+  top) dispatch "$S/top.sh" "$@" ;;
   rename) dispatch "$S/rename.sh" "$@" ;;
   claude) dispatch "$S/claude_local.sh" "$@" ;;
   ds4) cmd_ds4 "$@" ;;
